@@ -3,6 +3,7 @@
  * - TCP 시그널링, UDP 미디어, TCP 미디어 3개를 매핑
  * - 정상 종료 시 제거, 비정상 종료 후 남은 매핑은 다음 실행 시 정리
  */
+import dgram from 'node:dgram'
 import { upnpNat, type Gateway } from '@achingbrain/nat-port-mapper'
 import { createLogger } from '../logger'
 
@@ -30,7 +31,14 @@ export class UpnpManager {
   async probe(timeoutMs = 6000): Promise<UpnpProbe> {
     try {
       const gw = await this.findGateway(timeoutMs)
-      if (!gw) return { available: false, gatewayHost: null, externalIp: null, error: 'UPnP 게이트웨이를 찾지 못했습니다' }
+      if (!gw) {
+        // 일부 공유기(KT 등)는 SSDP 광고는 하지만 UPnP 서비스 포트를 열지 않는다. 원인을 구분해 안내한다.
+        const ssdp = await rawSsdpProbe(3000)
+        const error = ssdp
+          ? `공유기(${ssdp})가 UPnP 를 광고하지만 서비스에 접속할 수 없습니다. 공유기 관리 페이지에서 UPnP 를 켜거나 수동 포트포워딩을 하세요`
+          : 'UPnP 게이트웨이를 찾지 못했습니다 (공유기에서 UPnP 가 꺼져 있거나 방화벽이 응답을 막았습니다)'
+        return { available: false, gatewayHost: ssdp, externalIp: null, error }
+      }
       let externalIp: string | null = null
       try {
         externalIp = await gw.externalIp({ signal: AbortSignal.timeout(timeoutMs) })
@@ -104,4 +112,37 @@ export class UpnpManager {
     await this.gateway?.stop().catch(() => undefined)
     this.gateway = null
   }
+}
+
+/** 라이브러리 탐색이 실패했을 때, 공유기가 SSDP 에 응답하는지만 확인한다. 응답한 호스트 IP 또는 null */
+export function rawSsdpProbe(timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = (v: string | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try {
+        sock.close()
+      } catch {
+        /* ignore */
+      }
+      resolve(v)
+    }
+    const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+    const timer = setTimeout(() => finish(null), timeoutMs)
+    sock.on('error', () => finish(null))
+    sock.on('message', (msg, rinfo) => {
+      if (/InternetGatewayDevice|WANIPConnection|upnp:rootdevice/i.test(msg.toString())) finish(rinfo.address)
+    })
+    sock.bind(() => {
+      const search = (st: string) =>
+        Buffer.from(
+          ['M-SEARCH * HTTP/1.1', 'HOST: 239.255.255.250:1900', 'MAN: "ssdp:discover"', 'MX: 2', `ST: ${st}`, '', ''].join('\r\n')
+        )
+      for (const st of ['urn:schemas-upnp-org:device:InternetGatewayDevice:1', 'upnp:rootdevice']) {
+        sock.send(search(st), 1900, '239.255.255.250', () => undefined)
+      }
+    })
+  })
 }
