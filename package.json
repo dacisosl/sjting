@@ -1,0 +1,62 @@
+{
+  "name": "sjting",
+  "productName": "SJTing",
+  "version": "0.1.0",
+  "description": "설치형 소규모 화상회의 앱 - 방장 PC가 mediasoup SFU 역할을 하는 서버리스 Electron 앱 (최대 20명)",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "private": true,
+  "author": "dacisosl",
+  "license": "MIT",
+  "homepage": "https://github.com/dacisosl/sjting",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dacisosl/sjting.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run test",
+    "postinstall": "electron-builder install-app-deps",
+    "dist:win": "electron-vite build && electron-builder --win --x64",
+    "dist:win:dir": "electron-vite build && electron-builder --win --x64 --dir"
+  },
+  "dependencies": {
+    "@achingbrain/nat-port-mapper": "^4.0.5",
+    "cbor-x": "^1.6.6",
+    "mediasoup": "^3.27.0",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "clsx": "^2.1.1",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "lucide-react": "^1.46.0",
+    "mediasoup-client": "^3.23.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.0",
+    "vitest": "^5.0.1",
+    "zustand": "^5.0.15"
+  }
+}

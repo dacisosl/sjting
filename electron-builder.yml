@@ -1,0 +1,37 @@
+appId: kr.sjting.app
+productName: SJTing
+copyright: Copyright © 2026 dacisosl
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+# mediasoup worker 는 네이티브 실행 파일이므로 asar 밖으로 꺼내야 spawn 가능하다.
+asarUnpack:
+  - node_modules/mediasoup/worker/out/Release/**
+  - node_modules/mediasoup/worker/prebuild/**
+npmRebuild: false
+protocols:
+  - name: SJTing 초대 링크
+    schemes: [sjting]
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # 코드사이닝은 후속 단계(8단계). 서명 없이 빌드하면 SmartScreen 경고가 표시된다.
+  signAndEditExecutable: false
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  shortcutName: SJTing
+  language: 1042
+publish:
+  provider: github
+  owner: dacisosl
+  repo: sjting
+  releaseType: release

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 타입검사 · 단위테스트 (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install (mediasoup worker 프리빌드 포함)
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run typecheck
+      - run: npm test
+
+  build-win:
+    name: Windows 빌드 검증
+    runs-on: windows-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: electron-vite build + unpacked dir
+        run: npm run dist:win:dir
+      - name: mediasoup worker 가 asar 밖에 있는지 확인
+        shell: pwsh
+        run: |
+          $p = Get-ChildItem -Recurse -Path release -Filter mediasoup-worker.exe | Select-Object -First 1
+          if (-not $p) { throw 'mediasoup-worker.exe not found in unpacked output' }
+          if ($p.FullName -notmatch 'app\.asar\.unpacked') { throw "worker is inside asar: $($p.FullName)" }
+          Write-Host "worker OK: $($p.FullName)"
