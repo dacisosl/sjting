@@ -3,7 +3,7 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
-import { DEFAULT_INVITE_TTL_SEC, DEFAULT_MEDIA_PORT, DEFAULT_SIGNALING_PORT } from '@shared/constants'
+import { DEFAULT_SERVER_URL } from '@shared/constants'
 import type { AppSettings } from '@shared/types'
 import { createLogger } from './logger'
 
@@ -14,14 +14,10 @@ const SettingsSchema = z.object({
   preferredMicId: z.string().nullable().default(null),
   preferredCameraId: z.string().nullable().default(null),
   preferredSpeakerId: z.string().nullable().default(null),
-  signalingPort: z.number().int().min(1024).max(65535).default(DEFAULT_SIGNALING_PORT),
-  mediaPort: z.number().int().min(1024).max(65535).default(DEFAULT_MEDIA_PORT),
-  inviteTtlSec: z.number().int().min(60).max(7 * 24 * 3600).default(DEFAULT_INVITE_TTL_SEC),
+  serverUrl: z.string().url().default(DEFAULT_SERVER_URL),
   defaultMode: z.enum(['presentation', 'conversation', 'grid', 'lowbandwidth']).default('presentation'),
   screenPreset: z.enum(['document', 'video']).default('document'),
-  acceptedNotice: z.boolean().default(false),
-  lastMeasuredUploadMbps: z.number().nullable().default(null),
-  lastDiagnosticAt: z.number().nullable().default(null)
+  acceptedNotice: z.boolean().default(false)
 })
 
 export const SettingsPatchSchema = SettingsSchema.partial()

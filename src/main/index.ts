@@ -1,21 +1,19 @@
 /**
- * Electron Main 진입점 — 보안 원칙(계획서 8장) 적용:
- * nodeIntegration 끔, contextIsolation·sandbox 켬, CSP, 외부 URL 로딩 금지, 인증서 지문 고정 검증
+ * Electron Main 진입점 — 보안 원칙 적용:
+ * nodeIntegration 끔, contextIsolation·sandbox 켬, CSP, 외부 URL 로딩 금지
+ * 미디어·시그널링은 Cloudflare 회의 서버(https/wss)로만 연결한다.
  */
 import { app, BrowserWindow, desktopCapturer, session, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_PROTOCOL, INVITE_LINK_PREFIX } from '@shared/constants'
-import { HostController } from './host/HostController'
-import { deliverDeepLink, getPinnedHost, getSelectedScreen, registerIpc, setPendingDeepLink } from './ipc'
+import { deliverDeepLink, getSelectedScreen, registerIpc, setPendingDeepLink, stopKeepAwake } from './ipc'
 import { createLogger } from './logger'
-import { saveSettings } from './settings'
 
 const log = createLogger('main')
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
-const host = new HostController((patch) => saveSettings(patch))
 
 // ---------------------------------------------------------------- 단일 인스턴스 + 커스텀 프로토콜
 if (!app.requestSingleInstanceLock()) {
@@ -60,12 +58,10 @@ function createWindow(): void {
   mainWindow.on('closed', () => (mainWindow = null))
   mainWindow.webContents.on('did-finish-load', () => log.info('renderer 로딩 완료'))
   mainWindow.webContents.on('render-process-gone', (_e, details) => log.error(`renderer 프로세스 종료: ${details.reason}`))
-  // Renderer 콘솔 오류만 진단 로그에 남긴다 (내용은 redact 처리됨)
   mainWindow.webContents.on('console-message', (event) => {
     if (event.level === 'error') log.warn(`[renderer console] ${event.message}`)
   })
 
-  // 새 창·외부 링크 차단
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (e, url) => {
     const allowed = process.env['ELECTRON_RENDERER_URL'] && url.startsWith(process.env['ELECTRON_RENDERER_URL'])
@@ -81,8 +77,6 @@ function createWindow(): void {
 
 function applySessionSecurity(): void {
   const ses = session.defaultSession
-
-  // Content Security Policy
   const dev = !app.isPackaged
   const csp = [
     "default-src 'self'",
@@ -91,7 +85,8 @@ function applySessionSecurity(): void {
     "img-src 'self' data: blob:",
     "media-src 'self' blob: mediastream:",
     "font-src 'self' data:",
-    `connect-src 'self' wss: ${dev ? 'ws: http://localhost:* ' : ''}`,
+    // 회의 서버(https/wss)와 Cloudflare Realtime 연결 허용. 개발 시 로컬 wrangler dev 도 허용
+    `connect-src 'self' https: wss: ${dev ? 'ws: http://localhost:* http://127.0.0.1:* ' : ''}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'none'",
@@ -101,7 +96,6 @@ function applySessionSecurity(): void {
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } })
   })
 
-  // 권한: 미디어·화면 캡처만 허용
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'media' || permission === 'display-capture' || permission === 'clipboard-sanitized-write')
   })
@@ -125,28 +119,6 @@ function applySessionSecurity(): void {
   )
 }
 
-// ---------------------------------------------------------------- 인증서 지문 고정 (계획서 5.3)
-app.on('certificate-error', (event, _wc, url, _error, certificate, callback) => {
-  const pinnedHost = getPinnedHost()
-  let ok = false
-  try {
-    const u = new URL(url)
-    const port = Number(u.port || (u.protocol === 'wss:' || u.protocol === 'https:' ? 443 : 80))
-    const fp = certificate.fingerprint.replace(/^sha256\//, '')
-    const hostMatches = pinnedHost && (u.hostname === pinnedHost.host || u.hostname === '127.0.0.1' || u.hostname === 'localhost')
-    ok = !!pinnedHost && !!hostMatches && port === pinnedHost.port && fp === pinnedHost.fingerprint
-  } catch {
-    ok = false
-  }
-  if (ok) {
-    event.preventDefault()
-    callback(true)
-  } else {
-    log.warn('인증서 지문 불일치로 연결을 거부했습니다')
-    callback(false)
-  }
-})
-
 // ---------------------------------------------------------------- 앱 수명주기
 app.on('open-url', (e, url) => {
   e.preventDefault()
@@ -156,7 +128,7 @@ app.on('open-url', (e, url) => {
 app.whenReady().then(() => {
   app.setAppUserModelId('kr.sjting.app')
   applySessionSecurity()
-  registerIpc(host, () => mainWindow)
+  registerIpc(() => mainWindow)
   createWindow()
   log.info(`SJTing ${app.getVersion()} 시작`)
 
@@ -173,22 +145,8 @@ app.on('web-contents-created', (_e, contents) => {
   })
 })
 
-let quitting = false
-app.on('before-quit', (e) => {
-  if (quitting) return
-  if (host.getStatus().running) {
-    e.preventDefault()
-    quitting = true
-    host
-      .stop('방장 앱이 종료되어 회의가 끝났습니다')
-      .catch(() => undefined)
-      .finally(() => app.quit())
-  }
-})
-
-app.on('window-all-closed', () => {
-  app.quit()
-})
+app.on('before-quit', () => stopKeepAwake())
+app.on('window-all-closed', () => app.quit())
 
 process.on('uncaughtException', (err) => log.error('uncaughtException', err))
 process.on('unhandledRejection', (reason) => log.error('unhandledRejection', reason instanceof Error ? reason : String(reason)))

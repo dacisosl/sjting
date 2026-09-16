@@ -2,25 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import { Wifi, WifiOff } from 'lucide-react'
 import { LAYOUT_MODE_LABEL } from '@shared/constants'
-import type { Participant } from '@shared/types'
-import { planSubscriptions, isDegraded } from '../lib/layout'
+import { isDegraded, planSubscriptions, trackKey } from '../lib/layout'
 import { useAppStore } from '../store/appStore'
 import { useMeetingStore } from '../store/meetingStore'
 import ChatPanel from './ChatPanel'
 import ControlBar from './ControlBar'
 import InvitePanel from './InvitePanel'
 import ParticipantsPanel from './ParticipantsPanel'
-import VideoTile, { AudioSink } from './VideoTile'
+import VideoTile from './VideoTile'
 import { Button, Card } from './ui'
 
 export default function MeetingRoom() {
   const s = useMeetingStore()
-  const { go, settings, hostStatus } = useAppStore()
+  const { go } = useAppStore()
   const [showInvite, setShowInvite] = useState(false)
   const meId = s.me?.participantId ?? ''
   const me = s.participants.find((p) => p.id === meId)
 
-  // 방장은 회의 시작 직후 초대코드를 바로 보여준다
+  // 방장은 회의 시작 직후 초대 링크를 바로 보여준다
   useEffect(() => {
     if (s.me?.isHost && s.phase === 'connected' && s.participants.length <= 1) setShowInvite(true)
   }, [s.me?.isHost, s.phase, s.participants.length])
@@ -32,23 +31,19 @@ export default function MeetingRoom() {
             mode: s.mode,
             myId: meId,
             participants: s.participants,
-            producers: s.producers,
             activeSpeakerId: s.activeSpeakerId,
             recentSpeakers: s.recentSpeakers,
             visibleParticipantIds: null,
             degraded: isDegraded(s.quality)
           })
         : null,
-    [s.me, s.mode, meId, s.participants, s.producers, s.activeSpeakerId, s.recentSpeakers, s.quality]
+    [s.me, s.mode, meId, s.participants, s.activeSpeakerId, s.recentSpeakers, s.quality]
   )
 
-  const consumers = Object.values(s.consumers)
-  const trackFor = (participantId: string, source: 'camera' | 'screen') => {
+  const trackFor = (participantId: string, source: 'camera' | 'screen'): MediaStreamTrack | null => {
     if (participantId === meId) return source === 'camera' ? s.local.camera : s.local.screen
-    const c = consumers.find((x) => x.participantId === participantId && x.source === source && !x.paused)
-    return c?.track ?? null
+    return s.remoteTracks[trackKey(participantId, source)] ?? null
   }
-  const audioConsumers = consumers.filter((c) => c.kind === 'audio')
 
   if (s.phase === 'ended') {
     return (
@@ -71,10 +66,9 @@ export default function MeetingRoom() {
     )
   }
 
-  const screenSharer = s.participants.find((p) => plan?.screenProducerId && s.producers.some((pr) => pr.producerId === plan.screenProducerId && pr.participantId === p.id))
-  const myScreen = s.sharing && me ? me : null
-  const featuredScreenOwner: Participant | null = screenSharer ?? myScreen ?? null
+  const screenOwner = s.participants.find((p) => p.id === plan?.screenParticipantId) ?? (s.sharing ? me : undefined) ?? null
   const featuredId = plan?.featuredParticipantId ?? s.activeSpeakerId
+  const featured = s.participants.find((p) => p.id === featuredId) ?? null
   const others = s.participants.filter((p) => p.id !== meId)
   const stageMode = s.mode === 'presentation' || s.mode === 'lowbandwidth'
 
@@ -85,12 +79,14 @@ export default function MeetingRoom() {
         <span>· {LAYOUT_MODE_LABEL[s.mode]}</span>
         <span>· {s.participants.length}명</span>
         {s.phase === 'reconnecting' && <span className="animate-pulse text-amber-300">다시 연결 중…</span>}
+        {s.phase === 'connected' && s.mediaState !== 'connected' && s.mediaState !== 'new' && <span className="animate-pulse text-amber-300">미디어 연결 {s.mediaState}</span>}
         <span className="ml-auto flex items-center gap-1">
           {s.quality.level === 'poor' ? <WifiOff size={14} className="text-rose-300" /> : <Wifi size={14} className={s.quality.level === 'fair' ? 'text-amber-300' : 'text-emerald-300'} />}
           {s.quality.rtt !== null && <span>{Math.round(s.quality.rtt)}ms</span>}
           {s.quality.packetLossPct !== null && s.quality.packetLossPct > 0 && <span>· 손실 {s.quality.packetLossPct.toFixed(1)}%</span>}
-          <span>· ↑{(s.quality.uploadBps / 1e6).toFixed(1)} ↓{(s.quality.downloadBps / 1e6).toFixed(1)} Mbps</span>
-          {s.me?.isHost && hostStatus?.stats && <span>· 서버 ↑{(hostStatus.stats.uploadBps / 1e6).toFixed(1)} Mbps</span>}
+          <span>
+            · ↑{(s.quality.uploadBps / 1e6).toFixed(1)} ↓{(s.quality.downloadBps / 1e6).toFixed(1)} Mbps
+          </span>
         </span>
       </header>
 
@@ -99,10 +95,10 @@ export default function MeetingRoom() {
           {stageMode ? (
             <>
               <div className="min-h-0 flex-1">
-                {featuredScreenOwner ? (
-                  <VideoTile participant={featuredScreenOwner} track={trackFor(featuredScreenOwner.id, 'screen')} isScreen large isMe={featuredScreenOwner.id === meId} />
-                ) : featuredId && s.participants.find((p) => p.id === featuredId) ? (
-                  <VideoTile participant={s.participants.find((p) => p.id === featuredId)!} track={trackFor(featuredId, 'camera')} large isMe={featuredId === meId} mirror={featuredId === meId} />
+                {screenOwner ? (
+                  <VideoTile participant={screenOwner} track={trackFor(screenOwner.id, 'screen')} isScreen large isMe={screenOwner.id === meId} />
+                ) : featured ? (
+                  <VideoTile participant={featured} track={trackFor(featured.id, 'camera')} large isMe={featured.id === meId} mirror={featured.id === meId} />
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl bg-slate-900 text-sm text-slate-500">화면공유 또는 발언자가 여기에 크게 표시됩니다</div>
                 )}
@@ -115,9 +111,9 @@ export default function MeetingRoom() {
               </div>
             </>
           ) : (
-            <div className={clsx('scrollbar-thin grid flex-1 auto-rows-min gap-2 overflow-auto', gridCols(s.participants.length + (featuredScreenOwner ? 1 : 0)))}>
-              {featuredScreenOwner && (
-                <VideoTile participant={featuredScreenOwner} track={trackFor(featuredScreenOwner.id, 'screen')} isScreen className="col-span-2 row-span-2" isMe={featuredScreenOwner.id === meId} />
+            <div className={clsx('scrollbar-thin grid flex-1 auto-rows-min gap-2 overflow-auto', gridCols(s.participants.length + (screenOwner ? 1 : 0)))}>
+              {screenOwner && (
+                <VideoTile participant={screenOwner} track={trackFor(screenOwner.id, 'screen')} isScreen className="col-span-2 row-span-2" isMe={screenOwner.id === meId} />
               )}
               {me && <VideoTile participant={me} track={s.local.camera} isMe mirror />}
               {others.map((p) => (
@@ -127,17 +123,11 @@ export default function MeetingRoom() {
           )}
         </main>
         {s.sidePanel !== 'none' && (
-          <aside className="w-80 shrink-0 border-l border-slate-800 bg-slate-900/60">
-            {s.sidePanel === 'chat' ? <ChatPanel /> : <ParticipantsPanel />}
-          </aside>
+          <aside className="w-80 shrink-0 border-l border-slate-800 bg-slate-900/60">{s.sidePanel === 'chat' ? <ChatPanel /> : <ParticipantsPanel />}</aside>
         )}
       </div>
 
       <ControlBar onShowInvite={() => setShowInvite(true)} />
-
-      {audioConsumers.map((c) => (
-        <AudioSink key={c.consumerId} track={c.track} speakerId={settings?.preferredSpeakerId ?? null} />
-      ))}
 
       {showInvite && s.me?.isHost && <InvitePanel onClose={() => setShowInvite(false)} />}
 

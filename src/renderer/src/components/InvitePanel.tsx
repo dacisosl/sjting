@@ -1,16 +1,25 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Copy, RefreshCw, X } from 'lucide-react'
-import { maskIp } from '@shared/invite'
-import { useAppStore } from '../store/appStore'
+import { INVITE_VERSION } from '@shared/constants'
+import { buildInvite } from '@shared/invite'
+import { meetingClient } from '../lib/MeetingClient'
 import { useMeetingStore } from '../store/meetingStore'
 import { Badge, Button } from './ui'
 
 export default function InvitePanel({ onClose }: { onClose: () => void }) {
-  const { hostStatus, setHostStatus } = useAppStore()
-  const toast = useMeetingStore((s) => s.toast)
+  const { invite, roomId, serverUrl, toast, participants, maxParticipants } = useMeetingStore()
   const [busy, setBusy] = useState(false)
-  const invite = hostStatus?.invite
-  if (!hostStatus?.running || !invite) return null
+
+  const bundle = useMemo(() => {
+    if (!invite || !roomId || !serverUrl) return null
+    try {
+      return buildInvite({ version: INVITE_VERSION, serverUrl, roomId, token: invite.token, expiresAt: invite.expiresAt })
+    } catch {
+      return null
+    }
+  }, [invite, roomId, serverUrl])
+
+  if (!bundle) return null
 
   const copy = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text)
@@ -20,9 +29,8 @@ export default function InvitePanel({ onClose }: { onClose: () => void }) {
   const rotate = async () => {
     setBusy(true)
     try {
-      const inv = await window.sjting.host.rotateInvite()
-      setHostStatus({ ...hostStatus, invite: inv })
-      toast('초대코드를 재발급했습니다. 이전 코드는 즉시 무효화됩니다')
+      await meetingClient.rotateInvite()
+      toast('초대 링크를 재발급했습니다. 이전 링크는 즉시 무효화됩니다')
     } catch (e) {
       toast((e as Error).message, 'error')
     } finally {
@@ -34,39 +42,37 @@ export default function InvitePanel({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
       <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">초대코드</h2>
+          <h2 className="text-base font-semibold">초대 링크</h2>
           <Button variant="ghost" onClick={onClose}>
             <X size={16} />
           </Button>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <Badge level={hostStatus.addressType === 'public' ? 'green' : 'blue'}>{hostStatus.addressType === 'public' ? '외부 접속 가능' : 'LAN 전용'}</Badge>
-          <span>
-            주소 {maskIp(invite.payload.ip)} · 포트 {invite.payload.signalingPort}/{invite.payload.mediaPort}
-          </span>
-          <span>· 만료 {new Date(invite.payload.expiresAt * 1000).toLocaleString()}</span>
-          {hostStatus.upnpMapped && <span>· UPnP 매핑됨</span>}
+          <Badge level="green">
+            {participants.length}/{maxParticipants}명
+          </Badge>
+          <span>만료 {bundle.payload.expiresAt ? new Date(bundle.payload.expiresAt * 1000).toLocaleString() : '없음'}</span>
         </div>
-        <label className="mb-1 block text-xs text-slate-400">초대 링크 (권장)</label>
+        <label className="mb-1 block text-xs text-slate-400">초대 링크 (이걸 보내세요)</label>
         <div className="mb-3 flex gap-2">
-          <input readOnly value={invite.link} className="w-full truncate rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
-          <Button onClick={() => void copy(invite.link, '초대 링크')}>
-            <Copy size={16} />
+          <input readOnly value={bundle.link} className="w-full truncate rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
+          <Button variant="primary" onClick={() => void copy(bundle.link, '초대 링크')}>
+            <Copy size={16} /> 복사
           </Button>
         </div>
-        <label className="mb-1 block text-xs text-slate-400">초대코드</label>
+        <label className="mb-1 block text-xs text-slate-400">초대코드 (링크가 안 열릴 때 붙여넣기용)</label>
         <div className="mb-4 flex gap-2">
-          <textarea readOnly value={invite.code} rows={3} className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
-          <Button onClick={() => void copy(invite.code, '초대코드')}>
+          <textarea readOnly value={bundle.code} rows={2} className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
+          <Button onClick={() => void copy(bundle.code, '초대코드')}>
             <Copy size={16} />
           </Button>
         </div>
-        <p className="mb-4 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
-          초대코드에는 이 PC 의 공인 IP 가 포함됩니다. 유출이 의심되면 재발급하세요. 재발급하면 기존 코드는 즉시 무효화되지만 이미 입장한 참가자는 유지됩니다.
+        <p className="mb-4 rounded-lg bg-slate-800/60 p-3 text-xs text-slate-300">
+          링크를 가진 사람은 누구나 들어올 수 있습니다. 신뢰하는 사람에게만 보내고, 유출이 의심되면 재발급하세요. 재발급하면 기존 링크는 즉시 무효화되지만 이미 입장한 참가자는 유지됩니다.
         </p>
         <div className="flex justify-end">
           <Button variant="danger" onClick={rotate} disabled={busy}>
-            <RefreshCw size={16} /> 초대코드 재발급
+            <RefreshCw size={16} /> 초대 링크 재발급
           </Button>
         </div>
       </div>

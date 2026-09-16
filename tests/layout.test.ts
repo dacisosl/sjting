@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isDegraded, planSubscriptions, pushRecentSpeaker } from '../src/renderer/src/lib/layout'
-import type { Participant, ProducerInfo } from '@shared/types'
+import { isDegraded, planSubscriptions, pushRecentSpeaker, trackKey } from '../src/renderer/src/lib/layout'
+import type { Participant } from '@shared/types'
 import { MAX_VIDEO_SUBSCRIPTIONS } from '@shared/constants'
 
 function participant(id: string, i: number, extra: Partial<Participant> = {}): Participant {
@@ -12,87 +12,84 @@ function participant(id: string, i: number, extra: Partial<Participant> = {}): P
     camOff: false,
     handRaised: false,
     sharingScreen: false,
+    speaking: false,
     connection: 'connected',
     joinedAt: i,
+    tracks: { camera: { sessionId: `s-${id}`, trackName: `cam-${id}` }, mic: { sessionId: `s-${id}`, trackName: `mic-${id}` } },
     ...extra
   }
 }
 
-function makeRoom(n: number) {
-  const participants: Participant[] = [participant('me', 0), ...Array.from({ length: n - 1 }, (_, i) => participant(`p${i + 1}`, i + 1))]
-  const producers: ProducerInfo[] = participants.flatMap((p) => [
-    { producerId: `cam-${p.id}`, participantId: p.id, kind: 'video', source: 'camera', paused: false },
-    { producerId: `mic-${p.id}`, participantId: p.id, kind: 'audio', source: 'mic', paused: false }
-  ])
-  return { participants, producers }
+function makeRoom(n: number): Participant[] {
+  return [participant('me', 0), ...Array.from({ length: n - 1 }, (_, i) => participant(`p${i + 1}`, i + 1))]
+}
+
+function withScreen(p: Participant): Participant {
+  return { ...p, sharingScreen: true, tracks: { ...p.tracks, screen: { sessionId: `s-${p.id}`, trackName: `scr-${p.id}` } } }
 }
 
 const base = { myId: 'me', activeSpeakerId: null, recentSpeakers: [], visibleParticipantIds: null, degraded: false }
 
-describe('planSubscriptions', () => {
+describe('planSubscriptions v2', () => {
   it('never exceeds the max video subscription budget in a 20-person room', () => {
-    const { participants, producers } = makeRoom(20)
+    const participants = makeRoom(20)
     for (const mode of ['presentation', 'conversation', 'grid', 'lowbandwidth'] as const) {
-      const plan = planSubscriptions({ ...base, mode, participants, producers })
+      const plan = planSubscriptions({ ...base, mode, participants })
       expect(plan.video.size).toBeLessThanOrEqual(MAX_VIDEO_SUBSCRIPTIONS)
-      for (const id of plan.video.keys()) expect(id).not.toContain('me')
+      for (const key of plan.video.keys()) expect(key.startsWith('me:')).toBe(false)
     }
   })
 
-  it('presentation mode prioritises screen share at top layer and presenter camera', () => {
-    const { participants, producers } = makeRoom(8)
-    producers.push({ producerId: 'screen-p3', participantId: 'p3', kind: 'video', source: 'screen', paused: false })
-    const plan = planSubscriptions({ ...base, mode: 'presentation', participants, producers })
-    expect(plan.screenProducerId).toBe('screen-p3')
+  it('presentation mode prioritises screen share at full layer and presenter camera at half', () => {
+    const participants = makeRoom(8).map((p) => (p.id === 'p3' ? withScreen(p) : p))
+    const plan = planSubscriptions({ ...base, mode: 'presentation', participants })
+    expect(plan.screenParticipantId).toBe('p3')
     expect(plan.featuredParticipantId).toBe('p3')
-    expect(plan.video.get('screen-p3')?.spatialLayer).toBe(2)
-    expect(plan.video.get('cam-p3')?.spatialLayer).toBe(1)
-    // 나머지 소형 타일은 최저 계층
-    for (const [id, l] of plan.video) if (id !== 'screen-p3' && id !== 'cam-p3') expect(l.spatialLayer).toBe(0)
+    expect(plan.video.get(trackKey('p3', 'screen'))?.rid).toBe('f')
+    expect(plan.video.get(trackKey('p3', 'camera'))?.rid).toBe('h')
+    for (const [key, l] of plan.video) if (!key.startsWith('p3:')) expect(l.rid).toBe('q')
   })
 
   it('conversation mode follows recent speakers, max 6 cameras', () => {
-    const { participants, producers } = makeRoom(15)
+    const participants = makeRoom(15)
     const recent = ['p9', 'p8', 'p7', 'p6', 'p5', 'p4', 'p3']
-    const plan = planSubscriptions({ ...base, mode: 'conversation', participants, producers, recentSpeakers: recent, activeSpeakerId: 'p12' })
-    const cams = [...plan.video.keys()]
-    expect(cams.length).toBe(6)
-    expect(cams).toContain('cam-p12') // 현재 발언자 최우선
-    expect(cams).toContain('cam-p9')
-    expect(cams).not.toContain('cam-p3') // 7번째 최근 발언자는 제외
+    const plan = planSubscriptions({ ...base, mode: 'conversation', participants, recentSpeakers: recent, activeSpeakerId: 'p12' })
+    const keys = [...plan.video.keys()]
+    expect(keys.length).toBe(6)
+    expect(keys).toContain(trackKey('p12', 'camera'))
+    expect(keys).toContain(trackKey('p9', 'camera'))
+    expect(keys).not.toContain(trackKey('p3', 'camera'))
   })
 
   it('grid mode only subscribes visible tiles at lowest layer', () => {
-    const { participants, producers } = makeRoom(20)
-    const visible = new Set(['p1', 'p2', 'p3'])
-    const plan = planSubscriptions({ ...base, mode: 'grid', participants, producers, visibleParticipantIds: visible })
-    expect([...plan.video.keys()].sort()).toEqual(['cam-p1', 'cam-p2', 'cam-p3'])
-    for (const l of plan.video.values()) expect(l.spatialLayer).toBe(0)
+    const plan = planSubscriptions({ ...base, mode: 'grid', participants: makeRoom(20), visibleParticipantIds: new Set(['p1', 'p2', 'p3']) })
+    expect([...plan.video.keys()].sort()).toEqual(['p1:camera', 'p2:camera', 'p3:camera'])
+    for (const l of plan.video.values()) expect(l.rid).toBe('q')
   })
 
-  it('low bandwidth mode keeps screen at 720p-ish layer and only active speaker camera', () => {
-    const { participants, producers } = makeRoom(10)
-    producers.push({ producerId: 'screen-p2', participantId: 'p2', kind: 'video', source: 'screen', paused: false })
-    const plan = planSubscriptions({ ...base, mode: 'lowbandwidth', participants, producers, activeSpeakerId: 'p5' })
-    expect(plan.video.get('screen-p2')).toEqual({ spatialLayer: 1, temporalLayer: 1 })
-    expect(plan.video.get('cam-p5')?.spatialLayer).toBe(0)
+  it('low bandwidth mode keeps screen at half layer and only active speaker camera', () => {
+    const participants = makeRoom(10).map((p) => (p.id === 'p2' ? withScreen(p) : p))
+    const plan = planSubscriptions({ ...base, mode: 'lowbandwidth', participants, activeSpeakerId: 'p5' })
+    expect(plan.video.get(trackKey('p2', 'screen'))?.rid).toBe('h')
+    expect(plan.video.get(trackKey('p5', 'camera'))?.rid).toBe('q')
     expect(plan.video.size).toBe(2)
   })
 
-  it('degraded network lowers camera layers', () => {
-    const { participants, producers } = makeRoom(3)
-    const good = planSubscriptions({ ...base, mode: 'conversation', participants, producers })
-    const bad = planSubscriptions({ ...base, mode: 'conversation', participants, producers, degraded: true })
-    expect(good.video.get('cam-p1')?.spatialLayer).toBe(2)
-    expect(bad.video.get('cam-p1')?.spatialLayer).toBe(1)
+  it('degraded network lowers layers', () => {
+    const participants = makeRoom(3)
+    expect(planSubscriptions({ ...base, mode: 'conversation', participants }).video.get('p1:camera')?.rid).toBe('f')
+    expect(planSubscriptions({ ...base, mode: 'conversation', participants, degraded: true }).video.get('p1:camera')?.rid).toBe('h')
   })
 
-  it('skips paused cameras and reconnecting participants', () => {
-    const { participants, producers } = makeRoom(4)
-    producers.find((p) => p.producerId === 'cam-p1')!.paused = true
-    participants.find((p) => p.id === 'p2')!.connection = 'reconnecting'
-    const plan = planSubscriptions({ ...base, mode: 'grid', participants, producers })
-    expect([...plan.video.keys()]).toEqual(['cam-p3'])
+  it('skips cameras that are off or missing and reconnecting participants', () => {
+    const participants = makeRoom(4).map((p) => {
+      if (p.id === 'p1') return { ...p, camOff: true }
+      if (p.id === 'p2') return { ...p, connection: 'reconnecting' as const }
+      if (p.id === 'p3') return { ...p, tracks: { mic: p.tracks.mic } }
+      return p
+    })
+    const plan = planSubscriptions({ ...base, mode: 'grid', participants })
+    expect([...plan.video.keys()]).toEqual([])
   })
 })
 

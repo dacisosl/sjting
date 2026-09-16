@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ClientEnvelopeSchema, HOST_ONLY_METHODS, RequestSchemas } from '@shared/protocol'
+import { ClientEnvelopeSchema, CreateRoomSchema, HOST_ONLY_METHODS, RequestSchemas } from '@shared/protocol'
 import { CHAT_MAX_LENGTH, DISPLAY_NAME_MAX } from '@shared/constants'
 
-describe('signaling schemas', () => {
+describe('signaling schemas v2', () => {
   it('validates envelopes', () => {
     expect(ClientEnvelopeSchema.safeParse({ id: 1, method: 'join', data: {} }).success).toBe(true)
     expect(ClientEnvelopeSchema.safeParse({ id: -1, method: 'join', data: {} }).success).toBe(false)
@@ -17,6 +17,14 @@ describe('signaling schemas', () => {
     expect(RequestSchemas.join.safeParse({ token: 'short', displayName: 'x' }).success).toBe(false)
     expect(RequestSchemas.join.safeParse({ token: 'a'.repeat(22), displayName: 'x'.repeat(DISPLAY_NAME_MAX + 1) }).success).toBe(false)
     expect(RequestSchemas.join.safeParse({ token: 'a'.repeat(22), displayName: '   ' }).success).toBe(false)
+    expect(RequestSchemas.join.safeParse({ token: 'a'.repeat(22), displayName: 'x', resume: { participantId: 'p', resumeKey: 'k'.repeat(22) } }).success).toBe(true)
+  })
+
+  it('validates setTracks with nullable refs and rejects unknown sources', () => {
+    expect(RequestSchemas.setTracks.safeParse({ camera: { sessionId: 's', trackName: 't' }, mic: null }).success).toBe(true)
+    expect(RequestSchemas.setTracks.safeParse({ camera: { sessionId: '', trackName: 't' } }).success).toBe(false)
+    expect(RequestSchemas.setTracks.safeParse({ camera: { sessionId: 's' } }).success).toBe(false)
+    expect(RequestSchemas.setTracks.safeParse({}).success).toBe(true)
   })
 
   it('limits chat length', () => {
@@ -25,20 +33,16 @@ describe('signaling schemas', () => {
     expect(RequestSchemas.chat.safeParse({ text: '' }).success).toBe(false)
   })
 
-  it('validates produce sources and kinds', () => {
-    expect(RequestSchemas.produce.safeParse({ transportId: 't', kind: 'video', rtpParameters: {}, source: 'screen' }).success).toBe(true)
-    expect(RequestSchemas.produce.safeParse({ transportId: 't', kind: 'text', rtpParameters: {}, source: 'screen' }).success).toBe(false)
-    expect(RequestSchemas.produce.safeParse({ transportId: 't', kind: 'video', rtpParameters: {}, source: 'webcam' }).success).toBe(false)
-  })
-
-  it('clamps consumer layers', () => {
-    expect(RequestSchemas.setConsumerLayers.safeParse({ consumerId: 'c', spatialLayer: 2 }).success).toBe(true)
-    expect(RequestSchemas.setConsumerLayers.safeParse({ consumerId: 'c', spatialLayer: 9 }).success).toBe(false)
-  })
-
   it('marks host-only methods', () => {
-    for (const m of ['kick', 'muteAll', 'setLock', 'setMode', 'closeRoom'] as const) expect(HOST_ONLY_METHODS.has(m)).toBe(true)
+    for (const m of ['kick', 'muteAll', 'setLock', 'setMode', 'rotateInvite', 'closeRoom'] as const) expect(HOST_ONLY_METHODS.has(m)).toBe(true)
     expect(HOST_ONLY_METHODS.has('chat')).toBe(false)
-    expect(HOST_ONLY_METHODS.has('leave')).toBe(false)
+    expect(HOST_ONLY_METHODS.has('setTracks')).toBe(false)
+  })
+
+  it('validates room creation', () => {
+    const ok = CreateRoomSchema.safeParse({ displayName: '방장' })
+    expect(ok.success && ok.data.mode).toBe('presentation')
+    expect(CreateRoomSchema.safeParse({ displayName: '' }).success).toBe(false)
+    expect(CreateRoomSchema.safeParse({ displayName: 'a', inviteTtlSec: 10 }).success).toBe(false)
   })
 })

@@ -2,8 +2,7 @@ import { useEffect } from 'react'
 import { useAppStore } from './store/appStore'
 import { useMeetingStore } from './store/meetingStore'
 import HomeScreen from './components/HomeScreen'
-import DiagnosticsScreen from './components/DiagnosticsScreen'
-import HostSetupScreen from './components/HostSetupScreen'
+import CreateRoomScreen from './components/CreateRoomScreen'
 import JoinScreen from './components/JoinScreen'
 import SettingsScreen from './components/SettingsScreen'
 import MeetingRoom from './components/MeetingRoom'
@@ -11,20 +10,19 @@ import NoticeDialog from './components/NoticeDialog'
 import { Spinner } from './components/ui'
 
 export default function App() {
-  const { screen, settings, setSettings, setHostStatus, setPendingInvite, setVersion, go } = useAppStore()
+  const { screen, settings, setSettings, setPendingInvite, setVersion, go } = useAppStore()
   const phase = useMeetingStore((s) => s.phase)
 
   useEffect(() => {
     void window.sjting.settings.get().then(setSettings)
     void window.sjting.app.getVersion().then(setVersion)
-    void window.sjting.host.getStatus().then(setHostStatus)
-    const offStatus = window.sjting.host.onStatus(setHostStatus)
 
     const handleLink = async (link: string) => {
       try {
         const payload = await window.sjting.invite.parse(link)
         setPendingInvite(payload, link)
-        if (useMeetingStore.getState().phase === 'idle' || useMeetingStore.getState().phase === 'ended') go('join')
+        const ph = useMeetingStore.getState().phase
+        if (ph === 'idle' || ph === 'ended') go('join')
       } catch {
         /* 잘못된 링크는 무시 */
       }
@@ -33,11 +31,8 @@ export default function App() {
     void window.sjting.app.getPendingDeepLink().then((l) => {
       if (l) void handleLink(l)
     })
-    return () => {
-      offStatus()
-      offLink()
-    }
-  }, [setSettings, setHostStatus, setPendingInvite, setVersion, go])
+    return () => offLink()
+  }, [setSettings, setPendingInvite, setVersion, go])
 
   if (!settings) {
     return (
@@ -52,10 +47,8 @@ export default function App() {
   if (screen === 'meeting' || (phase !== 'idle' && phase !== 'ended')) return <MeetingRoom />
 
   switch (screen) {
-    case 'diagnostics':
-      return <DiagnosticsScreen />
-    case 'host-setup':
-      return <HostSetupScreen />
+    case 'create':
+      return <CreateRoomScreen />
     case 'join':
       return <JoinScreen />
     case 'settings':

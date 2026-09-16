@@ -30,12 +30,7 @@ export default function ParticipantsPanel() {
               {p.micMuted && <MicOff size={14} />}
             </span>
             {isHost && p.id !== me?.participantId && (
-              <Button
-                variant="ghost"
-                className="px-1.5 py-1"
-                title="강퇴"
-                onClick={() => void meetingClient.kick(p.id).catch((e) => toast((e as Error).message, 'error'))}
-              >
+              <Button variant="ghost" className="px-1.5 py-1" title="강퇴" onClick={() => void meetingClient.kick(p.id).catch((e) => toast((e as Error).message, 'error'))}>
                 <UserX size={14} className="text-rose-300" />
               </Button>
             )}

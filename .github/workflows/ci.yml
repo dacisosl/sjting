@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: 타입검사 · 단위테스트 (Linux)
+  app:
+    name: 앱 — 타입검사 · 단위테스트 (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -19,17 +19,35 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Install (mediasoup worker 프리빌드 포함)
-        run: npm ci
+      - run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run typecheck
       - run: npm test
+      - run: npx electron-vite build
+
+  server:
+    name: 서버 — 타입검사 · 단위테스트 · 배포 검증(dry-run)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - name: wrangler deploy --dry-run
+        run: npx wrangler deploy --dry-run --outdir dist
 
   build-win:
-    name: Windows 빌드 검증
+    name: Windows 패키징 검증
     runs-on: windows-latest
-    needs: check
+    needs: app
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -37,12 +55,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: electron-vite build + unpacked dir
-        run: npm run dist:win:dir
-      - name: mediasoup worker 가 asar 밖에 있는지 확인
-        shell: pwsh
+      - run: npm run dist:win:dir
+      - shell: pwsh
         run: |
-          $p = Get-ChildItem -Recurse -Path release -Filter mediasoup-worker.exe | Select-Object -First 1
-          if (-not $p) { throw 'mediasoup-worker.exe not found in unpacked output' }
-          if ($p.FullName -notmatch 'app\.asar\.unpacked') { throw "worker is inside asar: $($p.FullName)" }
-          Write-Host "worker OK: $($p.FullName)"
+          $exe = Get-ChildItem -Recurse -Path release -Filter SJTing.exe | Select-Object -First 1
+          if (-not $exe) { throw 'SJTing.exe not found' }
+          Write-Host "OK: $($exe.FullName)"

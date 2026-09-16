@@ -1,29 +1,21 @@
 /**
- * 초대코드 인코딩/디코딩 (계획서 5.1)
- * 구조: CBOR([버전, 주소유형, IPv4, 시그널링포트, 미디어포트, 토큰, 인증서지문, 만료시간]) + CRC32(4바이트) → Base64URL
+ * 초대코드 v2 — 공인 IP 가 들어가지 않는다.
+ * 구조: CBOR([버전, 서버URL, 방ID, 토큰, 만료시간]) + CRC32(4바이트) → Base64URL
  */
 import { Encoder } from 'cbor-x'
 import { z } from 'zod'
-import { fromBase64Url, fromStdBase64, toBase64Url, toStdBase64 } from './base64url'
+import { fromBase64Url, toBase64Url } from './base64url'
 import { crc32 } from './crc32'
 import { INVITE_LINK_PREFIX, INVITE_VERSION } from './constants'
-import type { InviteAddressType, InvitePayload } from './types'
+import type { InvitePayload } from './types'
 
 const cbor = new Encoder({ useRecords: false, mapsAsObjects: false })
 
-export const IPV4_REGEX = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
-
-const TYPE_CODE: Record<InviteAddressType, number> = { public: 0, lan: 1 }
-const CODE_TYPE: Record<number, InviteAddressType> = { 0: 'public', 1: 'lan' }
-
 const TupleSchema = z.tuple([
   z.number().int().min(1),
-  z.number().int().min(0).max(1),
-  z.instanceof(Uint8Array).refine((b) => b.length === 4, 'ipv4 must be 4 bytes'),
-  z.number().int().min(1).max(65535),
-  z.number().int().min(1).max(65535),
+  z.string().min(8).max(200),
+  z.string().min(4).max(64),
   z.instanceof(Uint8Array).refine((b) => b.length >= 16, 'token must be >= 128 bits'),
-  z.instanceof(Uint8Array).refine((b) => b.length === 32, 'fingerprint must be sha-256'),
   z.number().int().min(0)
 ])
 
@@ -39,26 +31,16 @@ export class InviteError extends Error {
   }
 }
 
-function ipToBytes(ip: string): Uint8Array {
-  if (!IPV4_REGEX.test(ip)) throw new InviteError('INVALID', 'IPv4 형식이 아닙니다')
-  return new Uint8Array(ip.split('.').map((p) => Number(p)))
-}
-
-function bytesToIp(b: Uint8Array): string {
-  return Array.from(b).join('.')
+export function normalizeServerUrl(url: string): string {
+  const u = new URL(url)
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1'))) {
+    throw new InviteError('INVALID', '서버 주소는 https 여야 합니다')
+  }
+  return u.origin
 }
 
 export function encodeInvite(payload: InvitePayload): string {
-  const tuple = [
-    payload.version,
-    TYPE_CODE[payload.type],
-    ipToBytes(payload.ip),
-    payload.signalingPort,
-    payload.mediaPort,
-    fromBase64Url(payload.token),
-    fromStdBase64(payload.certFingerprint),
-    payload.expiresAt
-  ]
+  const tuple = [payload.version, normalizeServerUrl(payload.serverUrl), payload.roomId, fromBase64Url(payload.token), payload.expiresAt]
   const body = new Uint8Array(cbor.encode(tuple))
   const crc = crc32(body)
   const out = new Uint8Array(body.length + 4)
@@ -107,33 +89,31 @@ export function decodeInvite(input: string, opts: DecodeOptions = {}): InvitePay
   }
   const parsed = TupleSchema.safeParse(decoded)
   if (!parsed.success) throw new InviteError('INVALID', '초대코드 구조가 올바르지 않습니다')
-  const [version, typeCode, ipBytes, sp, mp, token, fp, exp] = parsed.data
+  const [version, serverUrl, roomId, token, exp] = parsed.data
   if (version > INVITE_VERSION) {
     throw new InviteError('VERSION', '더 새로운 버전의 앱에서 만든 초대코드입니다. 앱을 업데이트하세요')
+  }
+  if (version < INVITE_VERSION) {
+    throw new InviteError('VERSION', '이전 버전 앱에서 만든 초대코드입니다. 방장이 앱을 업데이트해야 합니다')
+  }
+  let origin: string
+  try {
+    origin = normalizeServerUrl(serverUrl)
+  } catch {
+    throw new InviteError('INVALID', '초대코드의 서버 주소가 올바르지 않습니다')
   }
 
   const now = opts.now === undefined ? Math.floor(Date.now() / 1000) : opts.now
   if (now !== null && exp !== 0 && exp < now) throw new InviteError('EXPIRED', '만료된 초대코드입니다')
 
-  return {
-    version,
-    type: CODE_TYPE[typeCode],
-    ip: bytesToIp(ipBytes),
-    signalingPort: sp,
-    mediaPort: mp,
-    token: toBase64Url(token),
-    certFingerprint: toStdBase64(fp),
-    expiresAt: exp
-  }
+  return { version, serverUrl: origin, roomId, token: toBase64Url(token), expiresAt: exp }
 }
 
 export function inviteLink(code: string): string {
   return `${INVITE_LINK_PREFIX}${code}`
 }
 
-/** 안내 화면·로그용 IP 마스킹 */
-export function maskIp(ip: string | null | undefined): string {
-  if (!ip) return '-'
-  const p = ip.split('.')
-  return p.length === 4 ? `${p[0]}.${p[1]}.*.*` : ip
+export function buildInvite(payload: InvitePayload): { code: string; link: string; payload: InvitePayload } {
+  const code = encodeInvite(payload)
+  return { code, link: inviteLink(code), payload }
 }

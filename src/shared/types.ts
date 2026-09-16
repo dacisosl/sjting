@@ -1,5 +1,13 @@
 import type { LayoutMode, MediaSource } from './constants'
 
+/** Cloudflare Realtime SFU 트랙 참조 — 다른 참가자가 pull 할 때 필요한 최소 정보 */
+export interface TrackRef {
+  sessionId: string
+  trackName: string
+}
+
+export type ParticipantTracks = Partial<Record<MediaSource, TrackRef | null>>
+
 export interface Participant {
   id: string
   displayName: string
@@ -8,17 +16,11 @@ export interface Participant {
   camOff: boolean
   handRaised: boolean
   sharingScreen: boolean
+  speaking: boolean
   /** 재접속 대기 중이면 'reconnecting' */
   connection: 'connected' | 'reconnecting'
   joinedAt: number
-}
-
-export interface ProducerInfo {
-  producerId: string
-  participantId: string
-  kind: 'audio' | 'video'
-  source: MediaSource
-  paused: boolean
+  tracks: ParticipantTracks
 }
 
 export interface RoomSnapshot {
@@ -27,8 +29,9 @@ export interface RoomSnapshot {
   locked: boolean
   maxParticipants: number
   participants: Participant[]
-  producers: ProducerInfo[]
   activeSpeakerId: string | null
+  /** 방장에게만 채워짐 */
+  invite: { token: string; expiresAt: number } | null
 }
 
 export interface ChatMessage {
@@ -41,19 +44,14 @@ export interface ChatMessage {
   system?: boolean
 }
 
-export type InviteAddressType = 'public' | 'lan'
-
 export interface InvitePayload {
   version: number
-  type: InviteAddressType
-  ip: string
-  signalingPort: number
-  mediaPort: number
+  /** 회의 서버 origin, 예: https://sjting-server.example.workers.dev */
+  serverUrl: string
+  roomId: string
   /** base64url 토큰 (128비트 이상) */
   token: string
-  /** 방장 인증서 SHA-256 지문 (base64) */
-  certFingerprint: string
-  /** UNIX 초 */
+  /** UNIX 초. 0 이면 만료 없음 */
   expiresAt: number
 }
 
@@ -63,88 +61,15 @@ export interface InviteBundle {
   payload: InvitePayload
 }
 
-export type DiagnosticLevel = 'green' | 'yellow' | 'red' | 'gray' | 'pending' | 'skipped'
-
-export interface DiagnosticStep {
-  key: DiagnosticStepKey
-  title: string
-  level: DiagnosticLevel
-  detail: string
-}
-
-export type DiagnosticStepKey =
-  | 'local'
-  | 'publicIp'
-  | 'cgnat'
-  | 'upnp'
-  | 'portMap'
-  | 'firewall'
-  | 'reachability'
-  | 'bandwidth'
-  | 'recommendation'
-
-export interface DiagnosticResult {
-  startedAt: number
-  finishedAt: number
-  steps: DiagnosticStep[]
-  overall: DiagnosticLevel
-  summary: string
-  localIp: string | null
-  gatewayIp: string | null
-  publicIp: string | null
-  upnpExternalIp: string | null
-  cgnatSuspected: boolean
-  upnpAvailable: boolean
-  ports: { signaling: number; media: number }
-  recommendedMaxParticipants: number
-  recommendedMode: LayoutMode
-  /** 이전 회의에서 측정된 업로드 (Mbps). 없으면 null */
-  lastMeasuredUploadMbps: number | null
-}
-
-export interface HostStatus {
-  running: boolean
-  roomId: string | null
-  signalingPort: number | null
-  mediaPort: number | null
-  publicIp: string | null
-  lanIp: string | null
-  addressType: InviteAddressType | null
-  participantCount: number
-  invite: InviteBundle | null
-  hostToken: string | null
-  certFingerprint: string | null
-  upnpMapped: boolean
-  startedAt: number | null
-  stats: HostStats | null
-  lastError: string | null
-}
-
-export interface HostStats {
-  ts: number
-  uploadBps: number
-  downloadBps: number
-  workerAlive: boolean
-  transports: number
-  producers: number
-  consumers: number
-  /** 최근 측정 최대 업로드 (Mbps) */
-  peakUploadMbps: number
-}
-
 export interface AppSettings {
   displayName: string
   preferredMicId: string | null
   preferredCameraId: string | null
   preferredSpeakerId: string | null
-  signalingPort: number
-  mediaPort: number
-  inviteTtlSec: number
+  serverUrl: string
   defaultMode: LayoutMode
   screenPreset: 'document' | 'video'
   acceptedNotice: boolean
-  lastMeasuredUploadMbps: number | null
-  lastDiagnosticAt: number | null
 }
 
 export interface ScreenSourceInfo {
@@ -161,4 +86,21 @@ export interface NetworkQuality {
   uploadBps: number
   downloadBps: number
   level: 'good' | 'fair' | 'poor' | 'unknown'
+}
+
+/** POST /api/rooms 응답 */
+export interface CreateRoomResponse {
+  roomId: string
+  hostToken: string
+  inviteToken: string
+  inviteExpiresAt: number
+}
+
+/** GET /api/health 응답 */
+export interface ServerHealth {
+  ok: boolean
+  version: string
+  maxParticipants: number
+  /** 이번 달 사용한 참가자-분과 예산 */
+  usage: { usedMinutes: number; budgetMinutes: number; month: string }
 }

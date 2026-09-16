@@ -32,7 +32,7 @@ export default function VideoTile({ participant, track, isScreen, large, mirror,
     }
   }, [track])
 
-  // 창 밖으로 스크롤된 타일은 구독을 멈춘다 (계획서 6.4)
+  // 화면 밖으로 스크롤된 타일은 구독을 멈춘다
   useEffect(() => {
     const el = rootRef.current
     if (!el || isMe || isScreen) return
@@ -85,20 +85,4 @@ export default function VideoTile({ participant, track, isScreen, large, mirror,
       </div>
     </div>
   )
-}
-
-/** 원격 오디오 재생용 숨김 요소 */
-export function AudioSink({ track, speakerId }: { track: MediaStreamTrack; speakerId: string | null }) {
-  const ref = useRef<HTMLAudioElement>(null)
-  useEffect(() => {
-    const a = ref.current
-    if (!a) return
-    a.srcObject = new MediaStream([track])
-    void a.play().catch(() => undefined)
-  }, [track])
-  useEffect(() => {
-    const a = ref.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null
-    if (a?.setSinkId && speakerId) void a.setSinkId(speakerId).catch(() => undefined)
-  }, [speakerId])
-  return <audio ref={ref} autoPlay />
 }

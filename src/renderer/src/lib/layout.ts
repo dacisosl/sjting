@@ -1,35 +1,41 @@
 /**
- * 영상 구독 선택 정책 (계획서 2.3, 6.2, 6.4)
- * 모드·발언자·화면 표시 여부에 따라 어느 producer 를 어떤 계층으로 받을지 결정한다.
- * 순수 함수이므로 테스트 가능.
+ * 영상 구독 선택 정책 (계획서 2.3, 6.2, 6.4 — v2 에서는 Cloudflare simulcast rid 로 계층 선택)
+ * 모드·발언자·화면 표시 여부에 따라 어느 참가자의 어떤 영상을 어떤 계층으로 받을지 결정한다. 순수 함수.
  */
-import type { LayoutMode } from '@shared/constants'
-import { CONVERSATION_MODE_VIDEO_COUNT, MAX_VIDEO_SUBSCRIPTIONS } from '@shared/constants'
-import type { Participant, ProducerInfo } from '@shared/types'
+import type { LayoutMode, Rid } from '@shared/constants'
+import { CONVERSATION_MODE_VIDEO_COUNT, MAX_VIDEO_SUBSCRIPTIONS, RID } from '@shared/constants'
+import type { Participant } from '@shared/types'
+
+export type VideoSource = 'camera' | 'screen'
+
+export function trackKey(participantId: string, source: string): string {
+  return `${participantId}:${source}`
+}
 
 export interface SubscriptionPlan {
-  /** producerId → 선호 spatial layer (0=저, 1=중, 2=고) */
-  video: Map<string, { spatialLayer: number; temporalLayer?: number }>
-  /** 발표 모드 등에서 크게 표시할 참가자 */
+  /** trackKey → 선호 계층 */
+  video: Map<string, { rid: Rid }>
+  /** 크게 표시할 참가자 */
   featuredParticipantId: string | null
-  /** 화면공유 producer */
-  screenProducerId: string | null
+  /** 화면공유 중인 참가자 */
+  screenParticipantId: string | null
 }
 
 export interface PlanInput {
   mode: LayoutMode
   myId: string
   participants: Participant[]
-  producers: ProducerInfo[]
   activeSpeakerId: string | null
   /** 최근 발언 순서 (최신 먼저) */
   recentSpeakers: string[]
-  /** 화면에 실제로 보이는 참가자 타일 (IntersectionObserver). null 이면 전부 보이는 것으로 간주 */
+  /** 화면에 실제로 보이는 참가자 타일. null 이면 전부 보이는 것으로 간주 */
   visibleParticipantIds: Set<string> | null
   /** 네트워크 상태가 나쁘면 계층을 한 단계 낮춘다 */
   degraded: boolean
   maxVideos?: number
 }
+
+const LOWER: Record<Rid, Rid> = { f: 'h', h: 'q', q: 'q' }
 
 function orderBySpeaking(participants: Participant[], recent: string[], active: string | null): Participant[] {
   const rank = new Map<string, number>()
@@ -47,43 +53,35 @@ function orderBySpeaking(participants: Participant[], recent: string[], active: 
 
 export function planSubscriptions(input: PlanInput): SubscriptionPlan {
   const max = Math.min(input.maxVideos ?? MAX_VIDEO_SUBSCRIPTIONS, MAX_VIDEO_SUBSCRIPTIONS)
-  const video = new Map<string, { spatialLayer: number; temporalLayer?: number }>()
+  const video = new Map<string, { rid: Rid }>()
   const others = input.participants.filter((p) => p.id !== input.myId && p.connection === 'connected')
-  const cameraOf = (pid: string) => input.producers.find((pr) => pr.participantId === pid && pr.source === 'camera' && !pr.paused)
-  const screen = input.producers.find((pr) => pr.source === 'screen' && pr.participantId !== input.myId) ?? null
-  const clamp = (layer: number) => Math.max(0, input.degraded ? layer - 1 : layer)
+  const hasCam = (p: Participant) => !!p.tracks.camera && !p.camOff
+  const sharer = others.find((p) => !!p.tracks.screen) ?? null
+  const lower = (rid: Rid): Rid => (input.degraded ? LOWER[rid] : rid)
+  const isVisible = (pid: string) => !input.visibleParticipantIds || input.visibleParticipantIds.has(pid)
 
   let featured: string | null = null
   let budget = max
 
-  const isVisible = (pid: string) => !input.visibleParticipantIds || input.visibleParticipantIds.has(pid)
-
   switch (input.mode) {
     case 'presentation': {
-      if (screen) {
-        video.set(screen.producerId, { spatialLayer: 2, temporalLayer: input.degraded ? 1 : 2 })
+      if (sharer) {
+        video.set(trackKey(sharer.id, 'screen'), { rid: lower(RID.full) })
         budget -= 1
-        featured = screen.participantId
+        featured = sharer.id
       } else {
-        featured = input.activeSpeakerId && input.activeSpeakerId !== input.myId ? input.activeSpeakerId : others[0]?.id ?? null
+        featured = input.activeSpeakerId && input.activeSpeakerId !== input.myId ? input.activeSpeakerId : (others[0]?.id ?? null)
       }
-      // 발표자(화면공유자 또는 발언자) 카메라를 중간 계층으로
-      if (featured) {
-        const cam = cameraOf(featured)
-        if (cam && budget > 0) {
-          video.set(cam.producerId, { spatialLayer: clamp(screen ? 1 : 2) })
-          budget -= 1
-        }
+      const fp = others.find((p) => p.id === featured)
+      if (fp && hasCam(fp) && budget > 0) {
+        video.set(trackKey(fp.id, 'camera'), { rid: lower(sharer ? RID.half : RID.full) })
+        budget -= 1
       }
-      // 나머지는 저화질 소형 타일, 최근 발언자 우선
       for (const p of orderBySpeaking(others, input.recentSpeakers, input.activeSpeakerId)) {
         if (budget <= 0) break
-        if (p.id === featured || !isVisible(p.id)) continue
-        const cam = cameraOf(p.id)
-        if (cam) {
-          video.set(cam.producerId, { spatialLayer: 0 })
-          budget -= 1
-        }
+        if (p.id === featured || !isVisible(p.id) || !hasCam(p)) continue
+        video.set(trackKey(p.id, 'camera'), { rid: RID.quarter })
+        budget -= 1
       }
       break
     }
@@ -93,47 +91,38 @@ export function planSubscriptions(input: PlanInput): SubscriptionPlan {
       let n = 0
       for (const p of ordered) {
         if (n >= limit) break
-        const cam = cameraOf(p.id)
-        if (cam) {
-          video.set(cam.producerId, { spatialLayer: clamp(ordered.length <= 2 ? 2 : 1) })
-          n++
-        }
+        if (!hasCam(p)) continue
+        video.set(trackKey(p.id, 'camera'), { rid: lower(ordered.length <= 2 ? RID.full : RID.half) })
+        n++
       }
-      if (screen) video.set(screen.producerId, { spatialLayer: 2, temporalLayer: input.degraded ? 1 : 2 })
+      if (sharer) video.set(trackKey(sharer.id, 'screen'), { rid: lower(RID.full) })
       featured = input.activeSpeakerId
       break
     }
     case 'grid': {
-      // 최대 20명 타일. 보이는 타일만 초저화질로 구독, 나머지는 정지화면
-      if (screen) {
-        video.set(screen.producerId, { spatialLayer: 1, temporalLayer: 1 })
+      if (sharer) {
+        video.set(trackKey(sharer.id, 'screen'), { rid: RID.half })
         budget -= 1
       }
       for (const p of orderBySpeaking(others, input.recentSpeakers, input.activeSpeakerId)) {
         if (budget <= 0) break
-        if (!isVisible(p.id)) continue
-        const cam = cameraOf(p.id)
-        if (cam) {
-          video.set(cam.producerId, { spatialLayer: 0 })
-          budget -= 1
-        }
+        if (!isVisible(p.id) || !hasCam(p)) continue
+        video.set(trackKey(p.id, 'camera'), { rid: RID.quarter })
+        budget -= 1
       }
       break
     }
     case 'lowbandwidth': {
-      // 음성 우선, 화면공유 720p, 카메라는 발언자 1명만 최저 계층
-      if (screen) video.set(screen.producerId, { spatialLayer: 1, temporalLayer: 1 })
+      if (sharer) video.set(trackKey(sharer.id, 'screen'), { rid: RID.half })
       const speaker = input.activeSpeakerId && input.activeSpeakerId !== input.myId ? input.activeSpeakerId : null
-      if (speaker) {
-        const cam = cameraOf(speaker)
-        if (cam) video.set(cam.producerId, { spatialLayer: 0, temporalLayer: 0 })
-      }
-      featured = screen ? screen.participantId : speaker
+      const sp = others.find((p) => p.id === speaker)
+      if (sp && hasCam(sp)) video.set(trackKey(sp.id, 'camera'), { rid: RID.quarter })
+      featured = sharer ? sharer.id : speaker
       break
     }
   }
 
-  return { video, featuredParticipantId: featured, screenProducerId: screen?.producerId ?? null }
+  return { video, featuredParticipantId: featured, screenParticipantId: sharer?.id ?? null }
 }
 
 /** 네트워크 상태 → 저하 여부 (패킷 손실 3% 이상 또는 RTT 250ms 이상) */

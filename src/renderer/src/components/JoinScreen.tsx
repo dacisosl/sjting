@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ClipboardPaste } from 'lucide-react'
 import type { InvitePayload } from '@shared/types'
-import { maskIp } from '@shared/invite'
+import { getRoomInfo, type RoomInfo } from '../lib/api'
 import { meetingClient } from '../lib/MeetingClient'
 import { useAppStore } from '../store/appStore'
 import { Badge, Button, Card, Field, Input, Spinner } from './ui'
@@ -11,6 +11,7 @@ export default function JoinScreen() {
   const [name, setName] = useState(settings?.displayName || '')
   const [raw, setRaw] = useState(pendingInviteRaw ?? '')
   const [invite, setInvite] = useState<InvitePayload | null>(pendingInvite)
+  const [info, setInfo] = useState<RoomInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -20,6 +21,17 @@ export default function JoinScreen() {
       if (pendingInviteRaw) setRaw(pendingInviteRaw)
     }
   }, [pendingInvite, pendingInviteRaw])
+
+  useEffect(() => {
+    if (!invite) return setInfo(null)
+    let alive = true
+    getRoomInfo(invite.serverUrl, invite.roomId)
+      .then((i) => alive && setInfo(i))
+      .catch(() => alive && setInfo(null))
+    return () => {
+      alive = false
+    }
+  }, [invite])
 
   const parse = async (text: string) => {
     setRaw(text)
@@ -49,18 +61,17 @@ export default function JoinScreen() {
     setError(null)
     try {
       await updateSettings({ displayName: name.trim() })
-      const { signalingUrl } = await window.sjting.join.prepare(invite)
-      await meetingClient.join({ signalingUrl, token: invite.token, displayName: name.trim() })
+      await meetingClient.join({ serverUrl: invite.serverUrl, roomId: invite.roomId, token: invite.token, displayName: name.trim() })
       go('meeting')
     } catch (e) {
       setError((e as Error).message)
-      await window.sjting.join.clear()
     } finally {
       setBusy(false)
     }
   }
 
   const expired = invite ? invite.expiresAt !== 0 && invite.expiresAt * 1000 < Date.now() : false
+  const roomGone = info !== null && (!info.exists || info.closed)
 
   return (
     <div className="flex h-full flex-col">
@@ -76,7 +87,7 @@ export default function JoinScreen() {
             <Field label="내 표시 이름">
               <Input value={name} maxLength={24} placeholder="예: 김철수" onChange={(e) => setName(e.target.value)} />
             </Field>
-            <Field label="초대코드 또는 sjting:// 링크" hint="방장이 보낸 코드를 붙여넣으세요. 직접 타이핑하지 않아도 됩니다.">
+            <Field label="초대 링크 또는 초대코드" hint="방장이 보낸 링크를 붙여넣으세요.">
               <div className="flex gap-2">
                 <Input value={raw} spellCheck={false} onChange={(e) => void parse(e.target.value)} placeholder="sjting://join/..." />
                 <Button onClick={paste} title="클립보드에서 붙여넣기">
@@ -86,25 +97,26 @@ export default function JoinScreen() {
             </Field>
             {invite && (
               <div className="rounded-lg bg-slate-800/60 p-3 text-xs text-slate-300">
-                <div className="mb-2 flex items-center gap-2">
-                  <Badge level={expired ? 'red' : 'green'}>{expired ? '만료됨' : '유효한 초대'}</Badge>
-                  <Badge level="blue">{invite.type === 'public' ? '외부 접속' : 'LAN 접속'}</Badge>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Badge level={expired ? 'red' : roomGone ? 'red' : 'green'}>{expired ? '만료됨' : roomGone ? '종료된 회의' : '유효한 초대'}</Badge>
+                  {info?.exists && !info.closed && (
+                    <Badge level={info.locked ? 'yellow' : 'blue'}>
+                      {info.locked ? '입장 잠김' : `${info.participantCount}/${info.maxParticipants}명 참가 중`}
+                    </Badge>
+                  )}
                 </div>
                 <dl className="grid grid-cols-[100px_1fr] gap-1">
-                  <dt className="text-slate-500">방장 주소</dt>
-                  <dd>
-                    {maskIp(invite.ip)} : {invite.signalingPort}
-                  </dd>
-                  <dt className="text-slate-500">인증서 지문</dt>
-                  <dd className="truncate font-mono">{invite.certFingerprint.slice(0, 24)}…</dd>
+                  <dt className="text-slate-500">회의 서버</dt>
+                  <dd className="truncate">{invite.serverUrl.replace(/^https?:\/\//, '')}</dd>
+                  <dt className="text-slate-500">방 ID</dt>
+                  <dd className="font-mono">{invite.roomId}</dd>
                   <dt className="text-slate-500">만료</dt>
                   <dd>{invite.expiresAt ? new Date(invite.expiresAt * 1000).toLocaleString() : '없음'}</dd>
                 </dl>
-                <p className="mt-2 text-slate-500">연결 시 방장 인증서 지문을 고정 검증합니다. 지문이 다르면 입장이 차단됩니다.</p>
               </div>
             )}
             {error && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p>}
-            <Button variant="primary" className="w-full" disabled={!invite || expired || !name.trim() || busy} onClick={join}>
+            <Button variant="primary" className="w-full" disabled={!invite || expired || roomGone || !name.trim() || busy} onClick={join}>
               {busy ? <Spinner /> : null} 참가
             </Button>
           </div>

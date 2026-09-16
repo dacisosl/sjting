@@ -13,29 +13,15 @@ const api: SjtingApi = {
     getVersion: () => ipcRenderer.invoke(IPC.appGetVersion),
     openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
     onDeepLink: (cb) => on<string>(IPC.appDeepLink, cb),
-    getPendingDeepLink: () => ipcRenderer.invoke(IPC.appGetPendingDeepLink)
+    getPendingDeepLink: () => ipcRenderer.invoke(IPC.appGetPendingDeepLink),
+    setKeepAwake: (on) => ipcRenderer.invoke(IPC.appSetKeepAwake, on)
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch)
   },
-  network: {
-    runDiagnostics: (opts) => ipcRenderer.invoke(IPC.networkRunDiagnostics, opts),
-    onDiagnosticStep: (cb) => on(IPC.networkDiagnosticStep, cb)
-  },
-  host: {
-    start: (opts) => ipcRenderer.invoke(IPC.hostStart, opts),
-    stop: () => ipcRenderer.invoke(IPC.hostStop),
-    rotateInvite: () => ipcRenderer.invoke(IPC.hostRotateInvite),
-    getStatus: () => ipcRenderer.invoke(IPC.hostGetStatus),
-    onStatus: (cb) => on(IPC.hostStatus, cb)
-  },
   invite: {
     parse: (codeOrLink) => ipcRenderer.invoke(IPC.inviteParse, codeOrLink)
-  },
-  join: {
-    prepare: (payload) => ipcRenderer.invoke(IPC.joinPrepare, payload),
-    clear: () => ipcRenderer.invoke(IPC.joinClear)
   },
   screen: {
     getSources: () => ipcRenderer.invoke(IPC.screenGetSources),

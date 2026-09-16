@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sjting-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_VERSION": "0.2.0",
+    "MAX_PARTICIPANTS": "20",
+    // 월 무료 전송량(1,000GB)을 넘지 않도록 하는 참가자-분 예산. 넘으면 새 방·입장을 거절한다.
+    "MONTHLY_BUDGET_MINUTES": "20000",
+    "INVITE_TTL_SEC": "43200"
+  },
+  // 비밀값은 `wrangler secret put <이름>` 으로 등록한다 (docs/배포_Cloudflare.md):
+  //   SFU_APP_ID, SFU_APP_TOKEN  — Realtime SFU 앱
+  //   TICKET_SECRET              — 입장권 서명 키 (임의의 긴 문자열)
+  //   TURN_APP_ID, TURN_APP_TOKEN — 선택, Realtime TURN
+  //   ADMIN_KEY                  — 선택, /api/usage 조회용
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "SjtingRoom" },
+      { "name": "USAGE", "class_name": "UsageMeter" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SjtingRoom", "UsageMeter"] }]
+}

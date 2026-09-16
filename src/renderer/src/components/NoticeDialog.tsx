@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { Button, Card } from './ui'
 
-/** 첫 실행 안내 (계획서 9장): 처리 정보, 외부 IP 노출, 방장 책임과 네트워크 한계 */
+/** 첫 실행 안내: 처리 정보, 서버 경유, 사용량 한도 */
 export default function NoticeDialog() {
   const updateSettings = useAppStore((s) => s.updateSettings)
   const [busy, setBusy] = useState(false)
@@ -11,19 +11,19 @@ export default function NoticeDialog() {
       <Card title="SJTing 사용 전 안내" className="max-w-2xl">
         <ul className="space-y-3 text-sm leading-relaxed text-slate-300">
           <li>
-            <b className="text-slate-100">서버 없는 구조.</b> 회의를 만드는 사람(방장)의 PC 가 회의 서버 역할을 합니다. 영상·음성·채팅은 외부 서비스에 저장되지 않고 방장 PC 를 거쳐 실시간으로만 전달됩니다.
+            <b className="text-slate-100">설정 없이 바로.</b> 공유기·포트 설정이 필요 없습니다. 회의 만들기 버튼을 누르고 초대 링크를 보내면 끝입니다. 참가자는 링크만 붙여넣습니다.
           </li>
           <li>
-            <b className="text-slate-100">공인 IP 노출.</b> 초대코드에는 방장의 공인 IP 주소와 포트가 포함됩니다. 초대코드는 신뢰하는 사람에게만 전달하고, 유출이 의심되면 즉시 재발급하세요.
+            <b className="text-slate-100">영상 경로.</b> 영상·음성은 Cloudflare 의 실시간 중계 서버를 거쳐 전달되며 저장되지 않습니다. 채팅은 회의가 열려 있는 동안만 서버 메모리에 남고 회의 종료 시 삭제됩니다.
           </li>
           <li>
-            <b className="text-slate-100">네트워크 한계.</b> 통신사 CGNAT, 회사·학교 방화벽, 공유기 설정 권한이 없는 환경에서는 외부 회의를 열 수 없습니다. 이 앱은 모든 네트워크에서의 접속을 보장하지 않습니다.
+            <b className="text-slate-100">무료 사용량.</b> 이 서비스는 운영자의 무료 한도 안에서 제공됩니다. 한 달 한도를 다 쓰면 그 달에는 새 회의를 만들 수 없고, 다음 달 1일에 다시 열립니다.
           </li>
           <li>
-            <b className="text-slate-100">방장 책임.</b> 방장 PC 가 종료되거나 네트워크가 바뀌면 회의가 종료됩니다. 앱은 회의 중 PC 잠자기를 방지합니다.
+            <b className="text-slate-100">초대 링크 관리.</b> 링크를 가진 사람은 누구나 들어올 수 있습니다. 신뢰하는 사람에게만 보내고, 유출이 의심되면 방장이 재발급하세요. 방장은 입장 잠금·강퇴를 할 수 있습니다.
           </li>
           <li>
-            <b className="text-slate-100">저장되는 정보.</b> 표시 이름, 장치 선택, 포트 설정, 이전 회의의 업로드 측정값만 이 PC 에 저장합니다. 로그에는 토큰·전체 IP·채팅·미디어 내용을 남기지 않습니다.
+            <b className="text-slate-100">저장되는 정보.</b> 표시 이름, 장치 선택, 서버 주소만 이 PC 에 저장합니다. 로그에는 토큰·채팅·미디어 내용을 남기지 않습니다.
           </li>
         </ul>
         <div className="mt-6 flex justify-end">
