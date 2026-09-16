@@ -7,8 +7,12 @@
   "observability": { "enabled": true },
   // ../src/shared 의 zod import 를 cloud/node_modules 로 고정 (번들 시 루트 node_modules 불필요)
   "alias": { "zod": "./node_modules/zod" },
+  // 웹앱 정적 파일. `npm run build:web`(저장소 루트) 이 ./public 에 생성한다. /api, /partytracks 외 경로는 SPA 로 처리
+  "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "single-page-application" },
   "vars": {
     "APP_VERSION": "0.2.0",
+    // 설치형 앱 최소 지원 버전. 프로토콜이 호환되지 않게 바뀌면 올린다
+    "MIN_APP_VERSION": "0.2.0",
     "MAX_PARTICIPANTS": "20",
     // 월 무료 전송량(1,000GB)을 넘지 않도록 하는 참가자-분 예산. 넘으면 새 방·입장을 거절한다.
     "MONTHLY_BUDGET_MINUTES": "20000",

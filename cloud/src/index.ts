@@ -44,6 +44,7 @@ app.get('/api/health', async (c) => {
   const body: ServerHealth = {
     ok: true,
     version: c.env.APP_VERSION,
+    minAppVersion: c.env.MIN_APP_VERSION ?? '0.0.0',
     maxParticipants: intVar(c.env.MAX_PARTICIPANTS, MAX_PARTICIPANTS),
     usage: { usedMinutes: u.usedMinutes, budgetMinutes: u.budgetMinutes, month: u.month }
   }
@@ -119,6 +120,7 @@ app.get('/api/usage', async (c) => {
   return c.json(await usageInfo(c.env))
 })
 
-app.notFound((c) => c.text('SJTing server', 404))
+// 그 외 경로는 웹앱 정적 파일 (SPA fallback 은 wrangler assets 설정이 처리)
+app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw))
 
 export default app

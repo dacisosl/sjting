@@ -1,6 +1,7 @@
 /**
  * 초대코드 v2 — 공인 IP 가 들어가지 않는다.
  * 구조: CBOR([버전, 서버URL, 방ID, 토큰, 만료시간]) + CRC32(4바이트) → Base64URL
+ * 링크는 https://<서버>/join/<코드> 하나로 통일한다. 설치형 앱용 sjting://join/<코드> 도 함께 인식한다.
  */
 import { Encoder } from 'cbor-x'
 import { z } from 'zod'
@@ -32,7 +33,12 @@ export class InviteError extends Error {
 }
 
 export function normalizeServerUrl(url: string): string {
-  const u = new URL(url)
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    throw new InviteError('INVALID', '서버 주소가 올바르지 않습니다')
+  }
   if (u.protocol !== 'https:' && !(u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1'))) {
     throw new InviteError('INVALID', '서버 주소는 https 여야 합니다')
   }
@@ -52,11 +58,26 @@ export function encodeInvite(payload: InvitePayload): string {
   return toBase64Url(out)
 }
 
-/** 초대코드 또는 sjting://join/... 링크에서 코드 부분을 추출 */
+const CODE_RE = /^[A-Za-z0-9_-]+$/
+
+/**
+ * 초대코드, sjting://join/<코드>, https://<서버>/join/<코드> 어느 형태든 코드 부분만 추출
+ */
 export function extractInviteCode(input: string): string {
   const s = input.trim()
   if (s.toLowerCase().startsWith(INVITE_LINK_PREFIX)) {
     return s.slice(INVITE_LINK_PREFIX.length).replace(/[/?#].*$/, '')
+  }
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s)
+      const m = u.pathname.match(/\/join\/([A-Za-z0-9_-]+)/)
+      if (m) return m[1]
+      const q = u.searchParams.get('code')
+      if (q && CODE_RE.test(q)) return q
+    } catch {
+      /* fallthrough */
+    }
   }
   return s
 }
@@ -109,11 +130,24 @@ export function decodeInvite(input: string, opts: DecodeOptions = {}): InvitePay
   return { version, serverUrl: origin, roomId, token: toBase64Url(token), expiresAt: exp }
 }
 
-export function inviteLink(code: string): string {
+/** 기본 초대 링크: 웹에서 바로 열리고, 설치형 앱에서도 붙여넣어 쓸 수 있다 */
+export function inviteLink(code: string, serverUrl: string): string {
+  return `${normalizeServerUrl(serverUrl)}/join/${code}`
+}
+
+/** 설치형 앱 전용 링크 (앱이 설치되어 있으면 바로 열림) */
+export function appLink(code: string): string {
   return `${INVITE_LINK_PREFIX}${code}`
 }
 
-export function buildInvite(payload: InvitePayload): { code: string; link: string; payload: InvitePayload } {
+export interface InviteBundleFull {
+  code: string
+  link: string
+  appLink: string
+  payload: InvitePayload
+}
+
+export function buildInvite(payload: InvitePayload): InviteBundleFull {
   const code = encodeInvite(payload)
-  return { code, link: inviteLink(code), payload }
+  return { code, link: inviteLink(code, payload.serverUrl), appLink: appLink(code), payload }
 }

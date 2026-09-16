@@ -1,6 +1,7 @@
 /** 앱 화면 전환·설정 스토어 */
 import { create } from 'zustand'
 import type { AppSettings, InvitePayload } from '@shared/types'
+import { platform } from '../platform'
 
 export type Screen = 'home' | 'create' | 'join' | 'meeting' | 'settings'
 
@@ -30,7 +31,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   go: (screen) => set({ screen }),
   setSettings: (settings) => set({ settings }),
   updateSettings: async (patch) => {
-    const next = await window.sjting.settings.set(patch)
+    const next = await platform.settings.set(patch)
     set({ settings: next })
   },
   setPendingInvite: (pendingInvite, raw = null) => set({ pendingInvite, pendingInviteRaw: raw ?? get().pendingInviteRaw }),

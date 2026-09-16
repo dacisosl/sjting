@@ -20,6 +20,8 @@ npm run dist:win:dir         # Windows 패키징 검증
 - `src/shared/` — 앱·서버 공용. `protocol.ts`(시그널링 zod 스키마·타입, 방 생성 스키마), `invite.ts`(초대코드 v2: 서버URL·방ID·토큰·만료, CBOR+CRC32+Base64URL), `constants.ts`(한도·품질 정책·`DEFAULT_SERVER_URL`), `types.ts`.
 - `cloud/src/` — `index.ts`(Hono: 방 생성, WS 전달, `/partytracks/*` 프록시 + 입장권 검증), `RoomDO.ts`(Durable Object, WebSocket Hibernation, 인증·제한·재접속·자동 종료·사용량 틱), `RoomState.ts`(순수 상태, 테스트 대상), `UsageMeterDO.ts`(월 참가자-분 예산), `auth.ts`(토큰·해시·HMAC 입장권·RateLimiter).
 - `src/renderer/src/lib/MeetingClient.ts` — partytracks(`PartyTracks.push/pull`, `getMic/getCamera/getScreenshare`, `createAudioSink`) + `signaling.ts`. 구독 계획은 `lib/layout.ts`(순수 함수) 가 결정해 simulcast `preferredRid`(f/h/q) 로 계층을 고른다.
+- `src/renderer/src/platform.ts` — 플랫폼 어댑터. 화면·회의 코드는 `window.sjting` 을 직접 쓰지 않고 `platform` 만 사용한다(Electron 은 preload 위임, 웹은 localStorage·getDisplayMedia·wakeLock). `IS_WEB`/`IS_ELECTRON` 로 분기.
+- `vite.web.config.ts` — 웹앱 빌드(`__PLATFORM__='web'`) → `cloud/public`. wrangler `assets` 로 서버와 함께 배포되며 SPA fallback 이 `/join/<코드>` 를 처리한다. `src/renderer/public-web/_headers` 가 웹 CSP.
 - `src/main/` — 창·보안(CSP `connect-src https: wss:`)·IPC(설정, 초대 파싱, 화면 소스 선택, 잠자기 방지, 로그). 서버 역할 없음.
 - `src/renderer/src/store/` — zustand (`meetingStore`, `appStore`).
 
@@ -36,10 +38,13 @@ npm run dist:win:dir         # Windows 패키징 검증
 9. 앱·서버 공용 타입은 `src/shared` 에만 둔다. `cloud/` 는 상대 경로(`../../src/shared/*`)로 가져오며 cbor-x 등 Node 전용 모듈은 가져오지 않는다.
 10. 새 기능은 `tests/`(앱) 또는 `cloud/tests/`(서버) 에 단위테스트를 추가한다. 서버 흐름 변경 시 `wrangler dev` 로컬 e2e(방 생성→입장→트랙→채팅→강퇴→종료)를 다시 돌린다.
 11. 커밋 메시지는 한국어 요약 + 관련 계획 단계(예: `v2 3단계`)를 적는다.
+12. **설정 병합은 `mergeSettings`** 만 쓴다. zod `.partial()` 은 빠진 키에 기본값을 채워 기존 값을 덮어쓴다(acceptedNotice 회귀 버그). `tests/settings.test.ts` 가 이를 지킨다.
+13. **웹·앱 공존**: 서버 프로토콜을 호환되지 않게 바꾸면 `MIN_APP_VERSION`(wrangler vars) 을 올린다. 초대 링크는 https 하나로 유지하고 `sjting://` 은 보조로만 남긴다.
 
 ## 현재 상태 (2026-09-16)
 
 - v2 1·2단계 완료: 서버 로컬 e2e 27항목 통과, 앱 typecheck·테스트·빌드 통과.
 - 3단계 배포 완료 (2026-09-16): 회의 서버 `https://sjting-server.sjting-server.workers.dev`, 계정 schoooolid@gmail.com (wrangler 로그인은 이 PC 에 저장됨). 비밀값 SFU_APP_ID·SFU_APP_TOKEN·TICKET_SECRET 등록, 실제 SFU 세션 생성 확인. 서버 코드 변경 시 `cloud` 에서 `npx wrangler deploy`.
-- 미검증: 실제 SFU 를 통한 2인 통화, 화면공유 판독성, 20명 60분, 사용량 계량 정확도.
+- 3.5단계 웹앱 완료 (2026-09-16): 같은 주소에서 웹으로 접속 가능. 브라우저 2탭으로 방 생성→링크 참가→종료 확인 (카메라·마이크는 브라우저 자동화 환경에서 미확인).
+- 미검증: 실제 카메라·마이크·화면공유가 오가는 2인 통화(웹·앱), 화면공유 판독성, 20명 60분, 사용량 계량 정확도.
 - v1 코드(mediasoup·UPnP·진단)는 git 이력(커밋 `9ec1379` 이전)에만 남아 있다.

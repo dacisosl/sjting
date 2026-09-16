@@ -1,6 +1,9 @@
 export interface Env {
   ROOMS: DurableObjectNamespace
   USAGE: DurableObjectNamespace
+  /** 웹앱 정적 파일 (Workers Static Assets) */
+  ASSETS: Fetcher
+  MIN_APP_VERSION: string
   APP_VERSION: string
   MAX_PARTICIPANTS: string
   MONTHLY_BUDGET_MINUTES: string

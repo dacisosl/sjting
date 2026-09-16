@@ -22,6 +22,7 @@ import type { ChatMessage, NetworkQuality, ParticipantTracks, RoomSnapshot, Trac
 import { wsUrl } from './api'
 import { isDegraded, planSubscriptions, pushRecentSpeaker, trackKey } from './layout'
 import { SignalingClient, SignalingError } from './signaling'
+import { platform } from '../platform'
 import { useAppStore } from '../store/appStore'
 import { useMeetingStore } from '../store/meetingStore'
 
@@ -37,7 +38,7 @@ setLogLevel('warn')
 
 function rlog(level: 'info' | 'warn' | 'error', msg: string): void {
   try {
-    window.sjting.log.write(level, msg)
+    platform.log.write(level, msg)
   } catch {
     /* ignore */
   }
@@ -94,17 +95,17 @@ export class MeetingClient {
     store.getState().set({ phase: 'connecting', error: null, endedReason: null, serverUrl: params.serverUrl, roomId: params.roomId })
     try {
       const ticket = await this.connectAndJoin(false)
-      this.party = new PartyTracks({
-        prefix: `${params.serverUrl}/partytracks`,
-        headers: new Headers({ Authorization: `Bearer ${ticket}` })
-      })
+      const headers = new Headers({ Authorization: `Bearer ${ticket}` })
+      // partytracks 는 ICE 서버 조회에 커스텀 헤더를 붙이지 않으므로 입장권으로 직접 받아 넘긴다 (TURN 자격증명 보호)
+      const iceServers = await fetchIceServers(params.serverUrl, headers)
+      this.party = new PartyTracks({ prefix: `${params.serverUrl}/partytracks`, headers, iceServers })
       this.partySub = new Subscription()
       this.partySub.add(this.party.peerConnectionState$.subscribe((st) => store.getState().set({ mediaState: st })))
       this.partySub.add(this.party.peerConnection$.subscribe((pc) => (this.pc = pc)))
       this.partySub.add(this.party.sessionError$.subscribe((e) => rlog('warn', `SFU session error: ${e}`)))
       this.ensureAudioSink()
       store.getState().set({ phase: 'connected' })
-      void window.sjting.app.setKeepAwake(true)
+      void platform.setKeepAwake(true)
       this.startStats()
       this.watchStore()
       this.schedulePlan()
@@ -254,7 +255,7 @@ export class MeetingClient {
       camOn: false,
       sharing: false
     })
-    void window.sjting.app.setKeepAwake(false)
+    void platform.setKeepAwake(false)
   }
 
   // ---------------------------------------------------------------- 로컬 미디어
@@ -351,10 +352,11 @@ export class MeetingClient {
     await this.sig.request('updateSelf', { camOff: true }).catch(() => undefined)
   }
 
-  async startScreenShare(sourceId: string, preset: ScreenSharePreset, withSystemAudio: boolean): Promise<void> {
+  /** sourceId 가 null 이면 브라우저 기본 선택창(getDisplayMedia)을 사용한다 */
+  async startScreenShare(sourceId: string | null, preset: ScreenSharePreset, withSystemAudio: boolean): Promise<void> {
     if (!this.party) throw new Error('회의에 연결되어 있지 않습니다')
     await this.stopScreenShare()
-    await window.sjting.screen.select(sourceId, withSystemAudio)
+    if (sourceId) await platform.screen.select(sourceId, withSystemAudio)
     const q = QUALITY.screen[preset]
     const ss = getScreenshare({
       audio: withSystemAudio,
@@ -655,6 +657,18 @@ export class MeetingClient {
     const level: NetworkQuality['level'] =
       rtt === null && dPkts === 0 ? 'unknown' : packetLossPct >= 5 || (rtt ?? 0) >= 400 ? 'poor' : packetLossPct >= 2 || (rtt ?? 0) >= 200 ? 'fair' : 'good'
     store.getState().set({ quality: { rtt, packetLossPct, uploadBps, downloadBps, level } })
+  }
+}
+
+async function fetchIceServers(serverUrl: string, headers: Headers): Promise<RTCIceServer[]> {
+  const fallback: RTCIceServer[] = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.cloudflare.com:53'] }]
+  try {
+    const res = await fetch(`${serverUrl}/partytracks/generate-ice-servers`, { headers, signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return fallback
+    const body = (await res.json()) as { iceServers?: RTCIceServer[] }
+    return Array.isArray(body.iceServers) && body.iceServers.length ? body.iceServers : fallback
+  } catch {
+    return fallback
   }
 }
 

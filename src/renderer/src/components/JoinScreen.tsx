@@ -3,6 +3,8 @@ import { ArrowLeft, ClipboardPaste } from 'lucide-react'
 import type { InvitePayload } from '@shared/types'
 import { getRoomInfo, type RoomInfo } from '../lib/api'
 import { meetingClient } from '../lib/MeetingClient'
+import { IS_WEB, platform } from '../platform'
+import { appLink, extractInviteCode } from '@shared/invite'
 import { useAppStore } from '../store/appStore'
 import { Badge, Button, Card, Field, Input, Spinner } from './ui'
 
@@ -38,7 +40,7 @@ export default function JoinScreen() {
     setError(null)
     if (!text.trim()) return setInvite(null)
     try {
-      const p = await window.sjting.invite.parse(text)
+      const p = await platform.invite.parse(text)
       setInvite(p)
       setPendingInvite(p, text)
     } catch (e) {
@@ -87,9 +89,9 @@ export default function JoinScreen() {
             <Field label="내 표시 이름">
               <Input value={name} maxLength={24} placeholder="예: 김철수" onChange={(e) => setName(e.target.value)} />
             </Field>
-            <Field label="초대 링크 또는 초대코드" hint="방장이 보낸 링크를 붙여넣으세요.">
+            <Field label="초대 링크 또는 초대코드" hint={IS_WEB ? '방장이 보낸 링크를 붙여넣으세요. 링크를 직접 클릭해 이 페이지에 왔다면 이미 채워져 있습니다.' : '방장이 보낸 링크를 붙여넣으세요.'}>
               <div className="flex gap-2">
-                <Input value={raw} spellCheck={false} onChange={(e) => void parse(e.target.value)} placeholder="sjting://join/..." />
+                <Input value={raw} spellCheck={false} onChange={(e) => void parse(e.target.value)} placeholder="https://.../join/... 또는 sjting://join/..." />
                 <Button onClick={paste} title="클립보드에서 붙여넣기">
                   <ClipboardPaste size={16} />
                 </Button>
@@ -117,8 +119,17 @@ export default function JoinScreen() {
             )}
             {error && <p className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p>}
             <Button variant="primary" className="w-full" disabled={!invite || expired || roomGone || !name.trim() || busy} onClick={join}>
-              {busy ? <Spinner /> : null} 참가
+              {busy ? <Spinner /> : null} {IS_WEB ? '브라우저로 참가' : '참가'}
             </Button>
+            {IS_WEB && invite && !expired && !roomGone && (
+              <p className="text-center text-xs text-slate-500">
+                설치형 앱이 있다면{' '}
+                <a className="text-sky-400 underline" href={appLink(extractInviteCode(raw))}>
+                  앱으로 열기
+                </a>
+                . 크롬·엣지 브라우저를 권장합니다.
+              </p>
+            )}
           </div>
         </Card>
       </main>

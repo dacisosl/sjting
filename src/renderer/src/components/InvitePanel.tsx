@@ -11,7 +11,7 @@ export default function InvitePanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
 
   const bundle = useMemo(() => {
-    if (!invite || !roomId || !serverUrl) return null
+    if (!invite || !roomId || !serverUrl || !invite.token) return null
     try {
       return buildInvite({ version: INVITE_VERSION, serverUrl, roomId, token: invite.token, expiresAt: invite.expiresAt })
     } catch {
@@ -53,20 +53,33 @@ export default function InvitePanel({ onClose }: { onClose: () => void }) {
           </Badge>
           <span>만료 {bundle.payload.expiresAt ? new Date(bundle.payload.expiresAt * 1000).toLocaleString() : '없음'}</span>
         </div>
-        <label className="mb-1 block text-xs text-slate-400">초대 링크 (이걸 보내세요)</label>
+
+        <label className="mb-1 block text-xs text-slate-400">초대 링크 — 이것 하나만 보내면 됩니다. 브라우저에서 바로 열리고, 앱에도 붙여넣을 수 있습니다.</label>
         <div className="mb-3 flex gap-2">
           <input readOnly value={bundle.link} className="w-full truncate rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
           <Button variant="primary" onClick={() => void copy(bundle.link, '초대 링크')}>
             <Copy size={16} /> 복사
           </Button>
         </div>
-        <label className="mb-1 block text-xs text-slate-400">초대코드 (링크가 안 열릴 때 붙여넣기용)</label>
-        <div className="mb-4 flex gap-2">
-          <textarea readOnly value={bundle.code} rows={2} className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
-          <Button onClick={() => void copy(bundle.code, '초대코드')}>
-            <Copy size={16} />
-          </Button>
-        </div>
+
+        <details className="mb-4 text-xs text-slate-400">
+          <summary className="cursor-pointer select-none">다른 형식 (앱 전용 링크 · 초대코드)</summary>
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-2">
+              <input readOnly value={bundle.appLink} className="w-full truncate rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
+              <Button onClick={() => void copy(bundle.appLink, '앱 링크')}>
+                <Copy size={16} />
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <textarea readOnly value={bundle.code} rows={2} className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-xs text-slate-200" />
+              <Button onClick={() => void copy(bundle.code, '초대코드')}>
+                <Copy size={16} />
+              </Button>
+            </div>
+          </div>
+        </details>
+
         <p className="mb-4 rounded-lg bg-slate-800/60 p-3 text-xs text-slate-300">
           링크를 가진 사람은 누구나 들어올 수 있습니다. 신뢰하는 사람에게만 보내고, 유출이 의심되면 재발급하세요. 재발급하면 기존 링크는 즉시 무효화되지만 이미 입장한 참가자는 유지됩니다.
         </p>

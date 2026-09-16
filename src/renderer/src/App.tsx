@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { platform } from './platform'
 import { useAppStore } from './store/appStore'
 import { useMeetingStore } from './store/meetingStore'
 import HomeScreen from './components/HomeScreen'
@@ -14,12 +15,12 @@ export default function App() {
   const phase = useMeetingStore((s) => s.phase)
 
   useEffect(() => {
-    void window.sjting.settings.get().then(setSettings)
-    void window.sjting.app.getVersion().then(setVersion)
+    void platform.settings.get().then(setSettings)
+    void platform.getVersion().then(setVersion)
 
     const handleLink = async (link: string) => {
       try {
-        const payload = await window.sjting.invite.parse(link)
+        const payload = await platform.invite.parse(link)
         setPendingInvite(payload, link)
         const ph = useMeetingStore.getState().phase
         if (ph === 'idle' || ph === 'ended') go('join')
@@ -27,8 +28,8 @@ export default function App() {
         /* 잘못된 링크는 무시 */
       }
     }
-    const offLink = window.sjting.app.onDeepLink((l) => void handleLink(l))
-    void window.sjting.app.getPendingDeepLink().then((l) => {
+    const offLink = platform.onDeepLink((l) => void handleLink(l))
+    void platform.getPendingDeepLink().then((l) => {
       if (l) void handleLink(l)
     })
     return () => offLink()

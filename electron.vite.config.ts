@@ -2,6 +2,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
+
+const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as { version: string }
 
 export default defineConfig({
   main: {
@@ -27,6 +30,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
+    define: { __PLATFORM__: JSON.stringify('electron'), __APP_VERSION__: JSON.stringify(pkg.version) },
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

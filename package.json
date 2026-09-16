@@ -19,6 +19,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:web": "vite build -c vite.web.config.ts",
     "preview": "electron-vite preview",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
@@ -27,6 +28,7 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run test",
     "check:all": "npm run check && npm --prefix cloud run check",
+    "deploy:web": "npm run build:web && npm --prefix cloud run deploy",
     "dist:win": "electron-vite build && electron-builder --win --x64",
     "dist:win:dir": "electron-vite build && electron-builder --win --x64 --dir"
   },

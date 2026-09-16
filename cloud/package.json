@@ -6,7 +6,8 @@
   "description": "SJTing 회의 서버 — Cloudflare Workers + Durable Objects + Realtime SFU 프록시",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "npm --prefix .. run build:web && wrangler deploy",
+    "deploy:only": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",

@@ -25,10 +25,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx electron-vite build
+      - name: 웹앱 빌드 (cloud/public)
+        run: npm run build:web
+      - uses: actions/upload-artifact@v5
+        with:
+          name: web-dist
+          path: cloud/public
+          if-no-files-found: error
 
   server:
     name: 서버 — 타입검사 · 단위테스트 · 배포 검증(dry-run)
     runs-on: ubuntu-latest
+    needs: app
     defaults:
       run:
         working-directory: cloud
@@ -41,7 +49,11 @@ jobs:
           cache-dependency-path: cloud/package-lock.json
       - run: npm ci
       - run: npm run check
-      - name: wrangler deploy --dry-run
+      - uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: cloud/public
+      - name: wrangler deploy --dry-run (웹 정적 파일 포함)
         run: npx wrangler deploy --dry-run --outdir dist
 
   build-win:

@@ -7,13 +7,26 @@
 
 > v1(방장 PC 가 서버) 에서 v2(Cloudflare) 로 전환한 이유와 구조는 [docs/계획_v2_Cloudflare전환.md](docs/계획_v2_Cloudflare전환.md) 에 있습니다. 원본 요구사항은 [docs/화상회의앱_최종보완계획.md](docs/화상회의앱_최종보완계획.md).
 
+## 두 가지 출입문, 하나의 회의
+
+| | 웹 (기본) | 설치형 앱 |
+|---|---|---|
+| 접근 | 링크 클릭 → 브라우저에서 바로 | 설치 후 링크 클릭 또는 붙여넣기 |
+| 주소 | https://sjting-server.sjting-server.workers.dev | GitHub Releases 설치파일 |
+| 화면공유 | 브라우저 기본 선택창 | 앱 자체 선택창(썸네일), 시스템 오디오 loopback |
+| 업데이트 | 새로고침 | 수동 설치 (서버가 최소 버전을 안내) |
+
+둘은 같은 서버·같은 방을 쓰므로 한 회의에 섞여 들어옵니다. 초대 링크는 `https://<서버>/join/<코드>` 하나입니다.
+
 ## 구조
 
 ```
 sjting/
-├─ src/                 Electron 앱 (Main · Preload · React Renderer)
-│  ├─ shared/           프로토콜(zod)·초대코드·상수 — 앱과 서버가 함께 사용
+├─ src/                 앱 (Electron Main · Preload · React Renderer — 웹과 공유)
+│  ├─ shared/           프로토콜(zod)·초대코드·설정 스키마·상수 — 앱·웹·서버가 함께 사용
+│  ├─ renderer/src/platform.ts            플랫폼 어댑터 (electron ↔ web)
 │  └─ renderer/src/lib/MeetingClient.ts   partytracks(Realtime SFU) + 시그널링
+├─ vite.web.config.ts   웹앱 빌드 → cloud/public (Workers Static Assets)
 ├─ cloud/               회의 서버 (Cloudflare Worker + Durable Objects)
 │  ├─ src/RoomDO.ts     방·참가자·채팅·재접속·자동 종료
 │  ├─ src/UsageMeterDO.ts  월 사용량 예산 (무료 한도 차단 장치)
@@ -45,6 +58,8 @@ sjting/
 ```bash
 npm install && npm --prefix cloud install
 npm run check:all        # 앱 + 서버 타입검사·테스트
+npm run build:web        # 웹앱 빌드 (cloud/public)
+npm run deploy:web       # 웹앱 빌드 + 서버 배포 (wrangler 로그인 필요)
 npm run dev              # Electron 개발 실행
 npm --prefix cloud run dev   # 로컬 회의 서버 (http://127.0.0.1:8787) — cloud/.dev.vars 필요
 npm run dist:win         # Windows 설치파일 (release/<version>/)

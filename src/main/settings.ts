@@ -2,25 +2,13 @@
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { z } from 'zod'
-import { DEFAULT_SERVER_URL } from '@shared/constants'
+import { mergeSettings, SettingsPatchSchema, SettingsSchema } from '@shared/settingsSchema'
 import type { AppSettings } from '@shared/types'
 import { createLogger } from './logger'
 
 const log = createLogger('settings')
 
-const SettingsSchema = z.object({
-  displayName: z.string().max(24).default(''),
-  preferredMicId: z.string().nullable().default(null),
-  preferredCameraId: z.string().nullable().default(null),
-  preferredSpeakerId: z.string().nullable().default(null),
-  serverUrl: z.string().url().default(DEFAULT_SERVER_URL),
-  defaultMode: z.enum(['presentation', 'conversation', 'grid', 'lowbandwidth']).default('presentation'),
-  screenPreset: z.enum(['document', 'video']).default('document'),
-  acceptedNotice: z.boolean().default(false)
-})
-
-export const SettingsPatchSchema = SettingsSchema.partial()
+export { SettingsPatchSchema }
 
 let cache: AppSettings | null = null
 
@@ -42,8 +30,7 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(patch: Partial<AppSettings>): AppSettings {
-  const validPatch = SettingsPatchSchema.parse(patch)
-  const next = SettingsSchema.parse({ ...loadSettings(), ...validPatch })
+  const next = mergeSettings(loadSettings(), patch)
   cache = next
   try {
     fs.mkdirSync(path.dirname(filePath()), { recursive: true })

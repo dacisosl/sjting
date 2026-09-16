@@ -44,13 +44,16 @@ describe('invite code v2', () => {
     expect(code.length).toBeLessThan(160)
   })
 
-  it('accepts sjting:// links and extracts the code', () => {
-    const { code, link } = buildInvite(payload)
-    expect(link.startsWith('sjting://join/')).toBe(true)
-    expect(extractInviteCode(link)).toBe(code)
-    expect(decodeInvite(link, { now: null })).toEqual(payload)
-    expect(decodeInvite(` ${link}?x=1 `, { now: null })).toEqual(payload)
-    expect(inviteLink(code)).toBe(link)
+  it('builds an https link (primary) and an app link, and extracts the code from all forms', () => {
+    const { code, link, appLink: al } = buildInvite(payload)
+    expect(link).toBe(`${payload.serverUrl}/join/${code}`)
+    expect(al).toBe(`sjting://join/${code}`)
+    for (const form of [code, link, al, ` ${link}?x=1 `, `${link}#frag`, `${payload.serverUrl}/?code=${code}`]) {
+      expect(extractInviteCode(form)).toBe(code)
+      expect(decodeInvite(form, { now: null })).toEqual(payload)
+    }
+    expect(inviteLink(code, payload.serverUrl)).toBe(link)
+    expect(inviteLink(code, payload.serverUrl + '/some/path')).toBe(link)
   })
 
   it('normalizes server url to origin and requires https (localhost http allowed)', () => {

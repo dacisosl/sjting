@@ -100,6 +100,8 @@ export interface CreateRoomResponse {
 export interface ServerHealth {
   ok: boolean
   version: string
+  /** 이 서버가 지원하는 설치형 앱 최소 버전 (더 낮으면 업데이트 안내) */
+  minAppVersion: string
   maxParticipants: number
   /** 이번 달 사용한 참가자-분과 예산 */
   usage: { usedMinutes: number; budgetMinutes: number; month: string }

@@ -10,3 +10,4 @@ Thumbs.db
 coverage/
 .vite/
 *.tsbuildinfo
+cloud/public/

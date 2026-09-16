@@ -62,5 +62,6 @@ v1 은 "서버 비용 0원" 을 위해 방장 PC 가 SFU 서버를 맡는 구조
 - [x] 1단계 — 회의 서버: Worker + RoomDO + UsageMeter + SFU 프록시, 로컬 e2e 27항목 통과
 - [x] 2단계 — 앱 재구축: partytracks 기반 MeetingClient, 초대 v2, 화면 재작성, typecheck·테스트·빌드 통과
 - [x] 3단계 — 배포 (2026-09-16): `https://sjting-server.sjting-server.workers.dev` 에 배포, 비밀값 3개 등록, 실제 SFU 세션 생성 확인, 앱 기본 서버 주소 반영 ([배포_Cloudflare.md](배포_Cloudflare.md))
-- [ ] 4단계 — 실기기 시험: PC 2대 통화, 화면공유 문서 판독성, 20명 발표 모드 60분, 재접속, 사용량 계량 정확도
+- [x] 3.5단계 — 웹앱 (2026-09-16): 같은 렌더러 소스를 `__PLATFORM__='web'` 으로 빌드해 회의 서버의 정적 파일로 함께 배포. 초대 링크를 `https://<서버>/join/<코드>` 하나로 통일(앱 링크 `sjting://` 은 보조). 플랫폼 어댑터(`src/renderer/src/platform.ts`)로 설정·화면선택·잠자기방지·로그를 분리. 브라우저 2탭으로 방 생성→링크 참가→종료 확인. 서버가 `minAppVersion` 을 내려 오래된 설치형 앱에 업데이트 안내.
+- [ ] 4단계 — 실기기 시험: PC 2대 통화(웹·앱 혼합), 화면공유 문서 판독성, 20명 발표 모드 60분, 재접속, 사용량 계량 정확도
 - [ ] 5단계 — 후속: 세션-참가자 바인딩, TURN 자격증명(Realtime TURN, SFU 와 함께 쓰면 무료), 코드사이닝, 자동 업데이트

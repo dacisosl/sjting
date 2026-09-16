@@ -3,6 +3,7 @@ import { ArrowLeft, FileDown } from 'lucide-react'
 import { DEFAULT_SERVER_URL } from '@shared/constants'
 import { useDevices } from '../lib/useDevices'
 import { useAppStore } from '../store/appStore'
+import { IS_ELECTRON, platform } from '../platform'
 import { Button, Card, Field, Input, Select } from './ui'
 
 export default function SettingsScreen() {
@@ -73,6 +74,7 @@ export default function SettingsScreen() {
             <p className="text-xs text-slate-500">장치 이름이 비어 있으면 회의에서 한 번 마이크·카메라를 켠 뒤 다시 확인하세요.</p>
           </div>
         </Card>
+        {IS_ELECTRON && (
         <Card title="회의 서버 (고급)">
           <div className="space-y-3">
             <Field label="서버 주소" hint="직접 배포한 서버를 쓸 때만 바꿉니다. 기본값으로 되돌리려면 비우고 저장하세요.">
@@ -89,15 +91,18 @@ export default function SettingsScreen() {
             </Button>
           </div>
         </Card>
+        )}
+        {platform.log.canExport && (
         <Card title="진단 로그">
           <p className="mb-3 text-xs text-slate-400">로그에는 토큰·채팅·미디어 내용이 포함되지 않습니다. 문제 신고 시 첨부할 수 있습니다.</p>
-          <Button onClick={() => void window.sjting.log.export().then((p) => p && setSaved(`내보냄: ${p}`))}>
+          <Button onClick={() => void platform.log.export().then((p) => p && setSaved(`내보냄: ${p}`))}>
             <FileDown size={16} /> 로그 내보내기
           </Button>
         </Card>
+        )}
         <Card title="정보">
-          <p className="text-xs text-slate-400">SJTing 은 Electron 과 Cloudflare Realtime 기반 오픈소스 앱입니다. 업데이트는 GitHub Releases 에서 내려받습니다.</p>
-          <Button className="mt-3" onClick={() => void window.sjting.app.openExternal('https://github.com/dacisosl/sjting/releases')}>
+          <p className="text-xs text-slate-400">SJTing 은 Cloudflare Realtime 기반 오픈소스 화상회의입니다. {IS_ELECTRON ? '앱 업데이트는 GitHub Releases 에서 내려받습니다.' : '웹 버전은 새로고침만 하면 항상 최신입니다. 설치형 앱도 있습니다.'}</p>
+          <Button className="mt-3" onClick={() => void platform.openExternal('https://github.com/dacisosl/sjting/releases')}>
             GitHub Releases 열기
           </Button>
         </Card>
