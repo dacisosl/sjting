@@ -40,6 +40,6 @@ npm run dist:win:dir         # Windows 패키징 검증
 ## 현재 상태 (2026-09-16)
 
 - v2 1·2단계 완료: 서버 로컬 e2e 27항목 통과, 앱 typecheck·테스트·빌드 통과.
-- **3단계 배포는 운영자 작업 필요** (Cloudflare 계정·SFU 앱·`wrangler login`·secret·deploy). 배포 후 `DEFAULT_SERVER_URL` 갱신.
+- 3단계 배포 완료 (2026-09-16): 회의 서버 `https://sjting-server.sjting-server.workers.dev`, 계정 schoooolid@gmail.com (wrangler 로그인은 이 PC 에 저장됨). 비밀값 SFU_APP_ID·SFU_APP_TOKEN·TICKET_SECRET 등록, 실제 SFU 세션 생성 확인. 서버 코드 변경 시 `cloud` 에서 `npx wrangler deploy`.
 - 미검증: 실제 SFU 를 통한 2인 통화, 화면공유 판독성, 20명 60분, 사용량 계량 정확도.
 - v1 코드(mediasoup·UPnP·진단)는 git 이력(커밋 `9ec1379` 이전)에만 남아 있다.

@@ -61,6 +61,6 @@ v1 은 "서버 비용 0원" 을 위해 방장 PC 가 SFU 서버를 맡는 구조
 
 - [x] 1단계 — 회의 서버: Worker + RoomDO + UsageMeter + SFU 프록시, 로컬 e2e 27항목 통과
 - [x] 2단계 — 앱 재구축: partytracks 기반 MeetingClient, 초대 v2, 화면 재작성, typecheck·테스트·빌드 통과
-- [ ] 3단계 — 배포: 운영자가 Cloudflare 계정·SFU 앱 생성, `wrangler login`, 비밀값 등록, `wrangler deploy`, 앱 기본 서버 주소 반영 ([배포_Cloudflare.md](배포_Cloudflare.md))
+- [x] 3단계 — 배포 (2026-09-16): `https://sjting-server.sjting-server.workers.dev` 에 배포, 비밀값 3개 등록, 실제 SFU 세션 생성 확인, 앱 기본 서버 주소 반영 ([배포_Cloudflare.md](배포_Cloudflare.md))
 - [ ] 4단계 — 실기기 시험: PC 2대 통화, 화면공유 문서 판독성, 20명 발표 모드 60분, 재접속, 사용량 계량 정확도
 - [ ] 5단계 — 후속: 세션-참가자 바인딩, TURN 자격증명(Realtime TURN, SFU 와 함께 쓰면 무료), 코드사이닝, 자동 업데이트
