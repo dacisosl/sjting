@@ -14,7 +14,7 @@ export const INVITE_VERSION = 2
  * 기본 서버 주소. 배포 후 실제 workers.dev 주소로 바꾼다.
  * 설정 화면에서 사용자가 다른 서버를 지정할 수도 있다.
  */
-export const DEFAULT_SERVER_URL = 'https://sjting-server.dacisosl.workers.dev'
+export const DEFAULT_SERVER_URL = 'https://sjting-server.sjting-server.workers.dev'
 
 /** 시그널링 보호 한도 */
 export const WS_MAX_MESSAGE_BYTES = 32 * 1024
