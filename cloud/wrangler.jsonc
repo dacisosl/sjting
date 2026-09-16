@@ -5,6 +5,8 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // ../src/shared 의 zod import 를 cloud/node_modules 로 고정 (번들 시 루트 node_modules 불필요)
+  "alias": { "zod": "./node_modules/zod" },
   "vars": {
     "APP_VERSION": "0.2.0",
     "MAX_PARTICIPANTS": "20",

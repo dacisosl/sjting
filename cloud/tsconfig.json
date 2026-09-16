@@ -12,7 +12,10 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    // ../src/shared 가 import 하는 zod 를 cloud/node_modules 에서 찾도록 고정 (루트 node_modules 없이도 동작)
+    "baseUrl": ".",
+    "paths": { "zod": ["node_modules/zod"] }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "../src/shared/constants.ts", "../src/shared/types.ts", "../src/shared/protocol.ts"]
 }
